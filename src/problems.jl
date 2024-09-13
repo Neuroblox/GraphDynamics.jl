@@ -39,11 +39,14 @@ function _problem(g::GraphSystem, u0map, tspan, param_map=[]; scheduler=SerialSc
         length(states_partitioned[i]) == length(subsystem_params_partitioned[i]) ||
             error("Incompatible state and parameter lengths")
     end
-    for nc ∈ eachindex(connection_matrices)
+    for nc ∈ 1:length(connection_matrices)
         for i ∈ eachindex(states_partitioned)
             for k ∈ eachindex(states_partitioned)
-                size(connection_matrices[i, k]) == (length(states_partitioned[i]), length(states_partitioned[k])) ||
-                    error("Connection sub-matrix ($i, $k) has an incorrect size, expected $((length(states_partitioned[i]), length(states_partitioned[k]))), got $(size(connection_matrices[i, k])).")
+                M = connection_matrices[nc][i, k]
+                if !(M isa NotConnected)
+                    size(M) == (length(states_partitioned[i]), length(states_partitioned[k])) ||
+                        error("Connection sub-matrix ($nc, $i, $k) has an incorrect size, expected $((length(states_partitioned[i]), length(states_partitioned[k]))), got $(size(connection_matrices[i, k])).")
+                end
             end
         end
     end

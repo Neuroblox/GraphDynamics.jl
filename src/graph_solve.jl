@@ -125,9 +125,16 @@ function combine_inputs end
 function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, ::SerialScheduler;
                             init=initialize_input(subsys))
     acc = init
-    @inbounds for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-        acc′ = Mlj(Subsystem(states_partitioned[l], params_partitioned[l]), subsys) # Now do the actual reducing step just like the above method
-        acc = combine(acc, acc′)
+    if M isa SparseMatrixCSC
+        @inbounds for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+            acc′ = Mlj(Subsystem(states_partitioned[l], params_partitioned[l]), subsys) # Now do the actual reducing step just like the above method
+            acc = combine(acc, acc′)
+        end
+    else
+        @inbounds @simd for l ∈ axes(M, 1)
+            acc′ = M[l,j](Subsystem(states_partitioned[l], params_partitioned[l]), subsys) # Now do the actual reducing step just like the above method
+            acc = combine(acc, acc′)
+        end
     end
     acc
 end
@@ -266,40 +273,53 @@ end
 #----------------------------------------------------------
 # Infra. for discrete events. 
 #----------------------------------------------------------
-
 function discrete_condition(u, t, integrator)
     (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
     states_partitioned = to_vec_o_states(u.x, state_types_val)
     _discrete_condition!(states_partitioned, subsystem_params_partitioned, t, connection_matrices)
 end
 
-function _discrete_condition!(states_partitioned    ::NTuple{Len, Any},
-                              params_partitioned    ::NTuple{Len, Any},
-                              t,
-                              connection_matrices::ConnectionMatrices{NConn},) where {Len, NConn}
+using GraphDynamics.OhMyThreads: tmapreduce
+tany(f, coll; kwargs...) = tmapreduce(f, |, coll; kwargs...)
 
-    for i ∈ 1:Len
-        if has_discrete_events(eltype(states_partitioned[i]))
-            for j ∈ eachindex(states_partitioned[i])
-                discrete_event_condition(Subsystem(states_partitioned[i][j], params_partitioned[i][j]), t) && return true
+@generated function _discrete_condition!(states_partitioned    ::NTuple{Len, Any},
+                                         params_partitioned    ::NTuple{Len, Any},
+                                         t,
+                                         connection_matrices::ConnectionMatrices{NConn},) where {Len, NConn}
+    quote 
+        @nexprs $Len i -> begin
+            if has_discrete_events(eltype(states_partitioned[i]))
+                for j ∈ eachindex(states_partitioned[i])
+                    discrete_event_condition(Subsystem(states_partitioned[i][j], params_partitioned[i][j]), t) && return true
+                end
             end
         end
-    end
-    for nc ∈ 1:NConn
-        for i ∈ 1:Len
-            for k ∈ 1:Len
-                if has_discrete_events(eltype(connection_matrices[nc][k, i]))
-                    for j ∈ eachindex(states_partitioned[i])
-                        M = connection_matrices[nc][k, i]
-                        for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                            discrete_event_condition(Mlj, t) && return true
+        @nexprs $NConn nc -> begin
+            @nexprs $Len i -> begin
+                @nexprs $Len k -> begin
+                    M = connection_matrices[nc][k, i]
+                    if has_discrete_events(eltype(M))
+                        #tany(foo(Val(k), Val(i), Val(NConn), M, t), eachindex(states_partitioned[i])) && return true
+                        for j ∈ eachindex(states_partitioned[i])
+                            for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+                                discrete_event_condition(Mlj, t) && return true
+                            end
                         end
                     end
                 end
             end
         end
+        false
     end
-    false
+end
+
+function foo(::Val{k}, ::Val{i}, ::Val{NConn}, M, t) where {i, NConn, k}
+    function f(j)
+        for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+            discrete_event_condition(Mlj, t) && return true
+        end
+        false
+    end
 end
 
 function discrete_affect!(integrator)
@@ -309,59 +329,78 @@ function discrete_affect!(integrator)
     _discrete_affect!(integrator, states_partitioned, subsystem_params_partitioned, connection_matrices, integrator.t)
 end
 
-function _discrete_affect!(integrator,
-                           states_partitioned    ::NTuple{Len, Any},
-                           params_partitioned    ::NTuple{Len, Any},
-                           connection_matrices::ConnectionMatrices{NConn},
-                           t) where {Len, NConn}
-    for i ∈ 1:Len
-        if has_discrete_events(eltype(states_partitioned[i]))
-            for j ∈ eachindex(states_partitioned[i])
-                sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-                sview_dst = @view states_partitioned[i][j]
-                pview_dst = @view params_partitioned[i][j]
-                if discrete_event_condition(sys_dst, t)
-                    if discrete_events_require_inputs(sys_dst)
-                        input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
-                        apply_discrete_event!(integrator, sview_dst, pview_dst, sys_dst, input)
-                    else
-                        apply_discrete_event!(integrator, sview_dst, pview_dst, sys_dst)
+@generated function _discrete_affect!(integrator,
+                                      states_partitioned    ::NTuple{Len, Any},
+                                      params_partitioned    ::NTuple{Len, Any},
+                                      connection_matrices::ConnectionMatrices{NConn},
+                                      t) where {Len, NConn}
+    quote
+        @nexprs $Len i -> begin
+            if has_discrete_events(eltype(states_partitioned[i]))
+                for j ∈ eachindex(states_partitioned[i])
+                    sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                    sview_dst = @view states_partitioned[i][j]
+                    pview_dst = @view params_partitioned[i][j]
+                    if discrete_event_condition(sys_dst, t)
+                        if discrete_events_require_inputs(sys_dst)
+                            input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+                            apply_discrete_event!(integrator, sview_dst, pview_dst, sys_dst, input)
+                        else
+                            apply_discrete_event!(integrator, sview_dst, pview_dst, sys_dst)
+                        end
                     end
                 end
-                for nc ∈ 1:NConn
-                    for k ∈ 1:Len
-                        if has_discrete_events(eltype(connection_matrices[nc][k, i]))
-                            M = connection_matrices[nc][k, i]
-                            for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                                if discrete_event_condition(Mlj, t)
-                                    sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
-                                    sview_src = @view states_partitioned[k][l]
-                                    pview_src = @view params_partitioned[k][l]
-                                    if discrete_events_require_inputs(typeof(Mlj))
-                                        input_dst = calculate_inputs(Val(i), j,
-                                                                     states_partitioned,
-                                                                     params_partitioned,
-                                                                     connection_matrices)
-                                        input_src = calculate_inputs(Val(k), l,
-                                                                     states_partitioned,
-                                                                     params_partitioned,
-                                                                     connection_matrices)
-                                        apply_discrete_event!(integrator,
-                                                              sview_src, pview_src,
-                                                              sview_dst, pview_dst,
-                                                              Mlj,
-                                                              sys_src, input_src,
-                                                              sys_dst, input_dst)
-                                    else
-                                        apply_discrete_event!(integrator,
-                                                              sview_src, pview_src,
-                                                              sview_dst, pview_dst,
-                                                              Mlj,
-                                                              sys_src, sys_dst)
-                                    end
-                                end
-                            end
-                        end
+            end
+            @nexprs $NConn nc -> begin
+                @nexprs $Len k -> begin
+                    f =  _discrete_connection_affect!(Val(i), Val(k), Val(nc), t,
+                                                      states_partitioned, params_partitioned, connection_matrices,
+                                                      integrator)
+                    foreach(f, eachindex(states_partitioned[i]))
+                    
+                end
+            end
+        end
+    end
+end
+
+function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t, 
+                                      states_partitioned::NTuple{Len, Any},
+                                      params_partitioned::NTuple{Len, Any},
+                                      connection_matrices::ConnectionMatrices{NConn},
+                                      integrator) where {i, k, nc, Len, NConn}
+    function (j)
+        sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+        sview_dst = @view states_partitioned[i][j]
+        pview_dst = @view params_partitioned[i][j]
+        M = connection_matrices.matrices[nc].data[k][i]
+        if has_discrete_events(eltype(M))
+            for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+                if discrete_event_condition(Mlj, t)
+                    sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                    sview_src = @view states_partitioned[k][l]
+                    pview_src = @view params_partitioned[k][l]
+                    if discrete_events_require_inputs(typeof(Mlj))
+                        input_dst = calculate_inputs(Val(i), j,
+                                                     states_partitioned,
+                                                     params_partitioned,
+                                                     connection_matrices)
+                        input_src = calculate_inputs(Val(k), l,
+                                                     states_partitioned,
+                                                     params_partitioned,
+                                                     connection_matrices)
+                        apply_discrete_event!(integrator,
+                                              sview_src, pview_src,
+                                              sview_dst, pview_dst,
+                                              Mlj,
+                                              sys_src, input_src,
+                                              sys_dst, input_dst)
+                    else
+                        apply_discrete_event!(integrator,
+                                              sview_src, pview_src,
+                                              sview_dst, pview_dst,
+                                              Mlj,
+                                              sys_src, sys_dst)
                     end
                 end
             end
