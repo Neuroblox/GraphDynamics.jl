@@ -4,20 +4,22 @@ function (::Type{T})(g::Gsys, args...; kwargs...) where {T <: SciMLBase.Abstract
 end
 
 function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[]; scheduler=SerialScheduler(), tstops=Float64[], kwargs...)
-    (; f, u, tspan, p, callback, ev_times) = _problem(g, u0map, tspan, param_map; scheduler)
-    tstops = vcat(tstops, ev_times)
+    nt = _problem(g, u0map, tspan, param_map; scheduler)
+    (; f, u, tspan, p, callback) = nt
+    tstops = vcat(tstops, nt.tstops)
     ODEProblem(f, u, tspan, p; callback, tstops, kwargs...)
 end
 function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
                               scheduler=SerialScheduler(), tstops=Float64[], kwargs...)
-    (; f, u, tspan, p, callback, ev_times) = _problem(g, u0map, tspan, param_map; scheduler)
+    nt = _problem(g, u0map, tspan, param_map; scheduler)
+    (; f, u, tspan, p, callback) = nt
     
     noise_rate_prototype = nothing # zeros(length(u)) # this'll need to change once we support correlated noise
-    SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, ev_times), kwargs...)
+    SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
 end
 
-Base.@kwdef struct GraphSystemParameters{SSP, CM, S, STV}
-    subsystem_params_partitioned::SSP
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV}
+    params_partitioned::PP
     connection_matrices::CM
     scheduler::S
     state_types_val::STV
@@ -27,16 +29,17 @@ function _problem(g::GraphSystem, u0map, tspan, param_map=[]; scheduler=SerialSc
     isempty(u0map) || error("Specifying a state map is not yet implemented")
     isempty(param_map)  || error("Specifying a parameter map is not yet implemented")
 
-    (; states_partitioned, connection_matrices) = g
-    (; subsystem_params_partitioned,
-     ev_times,
+    (; states_partitioned,
+     params_partitioned,
+     connection_matrices,
+     tstops,
      composite_discrete_events_partitioned,
-     composite_continuous_events_partitioned,) = g.params
+     composite_continuous_events_partitioned,) = g
 
-    length(states_partitioned) == length(subsystem_params_partitioned) ||
+    length(states_partitioned) == length(params_partitioned) ||
         error("Incompatible state and parameter lengths")
-    for i ∈ eachindex(states_partitioned, subsystem_params_partitioned)
-        length(states_partitioned[i]) == length(subsystem_params_partitioned[i]) ||
+    for i ∈ eachindex(states_partitioned, params_partitioned)
+        length(states_partitioned[i]) == length(params_partitioned[i]) ||
             error("Incompatible state and parameter lengths")
     end
     for nc ∈ 1:length(connection_matrices)
@@ -72,15 +75,14 @@ function _problem(g::GraphSystem, u0map, tspan, param_map=[]; scheduler=SerialSc
     de = nde > 0 ? DiscreteCallback(discrete_condition, discrete_affect!) : nothing
     callback = CallbackSet(ce, de, composite_discrete_callbacks(composite_discrete_events_partitioned))
     f = GraphSystemFunction(graph_ode!, g)
-    p = GraphSystemParameters(;subsystem_params_partitioned, connection_matrices, scheduler, state_types_val)
-    (; f, u, tspan, p, callback, ev_times)
+    p = GraphSystemParameters(; params_partitioned, connection_matrices, scheduler, state_types_val)
+    (; f, u, tspan, p, callback, tstops)
 end
 
 composite_discrete_callbacks(::Nothing) = nothing
 function composite_discrete_callbacks(composite_discrete_events_partitioned::NTuple{Len, Any}) where {Len}
     function composite_event_conditions(u, t, integrator)
-        (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
-        params_partitioned = subsystem_params_partitioned
+        (;params_partitioned, state_types_val, connection_matrices) = integrator.p
         states_partitioned = to_vec_o_states(u.x, state_types_val)
         for i ∈ 1:Len
             for j ∈ eachindex(composite_discrete_events_partitioned[i])
@@ -96,8 +98,7 @@ function composite_discrete_callbacks(composite_discrete_events_partitioned::NTu
         false
     end
     function composite_event_affect!(integrator)
-        (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
-        params_partitioned = subsystem_params_partitioned
+        (;params_partitioned, state_types_val, connection_matrices) = integrator.p
         states_partitioned = to_vec_o_states(integrator.u.x, state_types_val)
         (;t) = integrator
         for i ∈ 1:Len

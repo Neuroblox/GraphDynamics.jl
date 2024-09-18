@@ -1,11 +1,11 @@
 #----------------------------------------------------------
 function graph_ode!(du::ArrayPartition,
                     u::ArrayPartition,
-                    (;subsystem_params_partitioned, connection_matrices, scheduler, state_types_val)::P,
+                    (;params_partitioned, connection_matrices, scheduler, state_types_val)::P,
                     t) where {P}
     states_partitioned  = to_vec_o_states( u.x, state_types_val)
     dstates_partitioned = to_vec_o_states(du.x, state_types_val)
-    _graph_ode!(dstates_partitioned, states_partitioned, subsystem_params_partitioned, connection_matrices, scheduler, t)
+    _graph_ode!(dstates_partitioned, states_partitioned, params_partitioned, connection_matrices, scheduler, t)
 end
 
 function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
@@ -170,11 +170,11 @@ end
 
 function graph_noise!(du,
                       u::ArrayPartition,
-                      (;subsystem_params_partitioned, connection_matrices, scheduler, state_types_val)::P,
+                      (;params_partitioned, connection_matrices, scheduler, state_types_val)::P,
                       t) where {P}
     states_partitioned  = to_vec_o_states( u.x, state_types_val)
     dstates_partitioned = to_vec_o_states(du.x, state_types_val)
-    _graph_noise!(dstates_partitioned, states_partitioned, subsystem_params_partitioned, connection_matrices, t)
+    _graph_noise!(dstates_partitioned, states_partitioned, params_partitioned, connection_matrices, t)
 end
 
 #TODO: graph_noise! currently doesn't support noise dependant on inputs
@@ -212,9 +212,9 @@ end
 #----------------------------------------------------------
 
 function continuous_condition(out, u, t, integrator)
-    (;subsystem_params_partitioned, state_types_val) = integrator.p
+    (;params_partitioned, state_types_val) = integrator.p
     states_partitioned = to_vec_o_states(u.x, state_types_val)
-    _continuous_condition!(out, states_partitioned, subsystem_params_partitioned, t)
+    _continuous_condition!(out, states_partitioned, params_partitioned, t)
 end
 
 function _continuous_condition!(out,
@@ -235,10 +235,10 @@ end
 
 
 function continuous_affect!(integrator, idx)
-    (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
+    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
     state_data = integrator.u.x
     states_partitioned = to_vec_o_states(state_data, state_types_val)
-    _continuous_affect!(integrator, states_partitioned, subsystem_params_partitioned, connection_matrices, idx)
+    _continuous_affect!(integrator, states_partitioned, params_partitioned, connection_matrices, idx)
 end
 
 function _continuous_affect!(integrator,
@@ -274,9 +274,9 @@ end
 # Infra. for discrete events. 
 #----------------------------------------------------------
 function discrete_condition(u, t, integrator)
-    (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
+    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
     states_partitioned = to_vec_o_states(u.x, state_types_val)
-    _discrete_condition!(states_partitioned, subsystem_params_partitioned, t, connection_matrices)
+    _discrete_condition!(states_partitioned, params_partitioned, t, connection_matrices)
 end
 
 using GraphDynamics.OhMyThreads: tmapreduce
@@ -323,10 +323,10 @@ function foo(::Val{k}, ::Val{i}, ::Val{NConn}, M, t) where {i, NConn, k}
 end
 
 function discrete_affect!(integrator)
-    (;subsystem_params_partitioned, state_types_val, connection_matrices) = integrator.p
+    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
     state_data = integrator.u.x
     states_partitioned = to_vec_o_states(state_data, state_types_val)
-    _discrete_affect!(integrator, states_partitioned, subsystem_params_partitioned, connection_matrices, integrator.t)
+    _discrete_affect!(integrator, states_partitioned, params_partitioned, connection_matrices, integrator.t)
 end
 
 @generated function _discrete_affect!(integrator,
