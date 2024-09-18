@@ -81,9 +81,9 @@ spring_conns_osc_osc = NotConnected()
 spring_conns = ConnectionMatrix(((spring_conns_par_par, spring_conns_par_osc),
                                  (spring_conns_osc_par, spring_conns_osc_osc)))
 
-# Spring[⎡. .⎤ ⎡2⎤
-#        ⎣. .⎦ ⎣0⎦
-#        [2 0] [.]]
+# Spring[⎡. .⎤ ⎡1⎤
+#        ⎣. .⎦ ⎣1⎦
+#        [1 1] [.]]
 
 ```
 and lets suppose we want all of them to repel eachother with a Coulomb factor of `0.05` (but not repel themselves!). Then, we would write
@@ -101,7 +101,7 @@ coulomb_conns = ConnectionMatrix(((coulomb_conns_par_par, coulomb_conns_par_osc)
 
 # Coulomb[⎡0 1⎤ ⎡1⎤
 #         ⎣1 0⎦ ⎣1⎦
-#         [0 0] [.]]
+#         [1 1] [.]]
 
 connection_matrices = ConnectionMatrices((spring_conns, coulomb_conns))
 ```
