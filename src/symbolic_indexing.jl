@@ -15,6 +15,33 @@ struct ParamIndex #todo: this'll require some generalization to support weight p
     prop::Symbol
 end
 
+function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{<:AbstractVector{<:SubsystemStates}}})
+    state_namemap = Dict{Symbol, StateIndex}()
+    for i ∈ eachindex(names_partitioned, states_partitioned)
+        for j ∈ eachindex(names_partitioned[i], states_partitioned[i])
+            for (k, name) ∈ enumerate(propertynames(states_partitioned[i][j]))
+                propname = Symbol(names_partitioned[i][j], "₊", name)
+                state_namemap[propname] = StateIndex(i, j, k)
+            end
+        end
+    end
+    state_namemap
+end
+function compute_namemap(names_partitioned, params_partitioned::Tuple{Vararg{<:AbstractVector{<:SubsystemParams}}})
+    param_namemap = Dict{Symbol, ParamIndex}()
+    for i ∈ eachindex(names_partitioned, params_partitioned)
+        for j ∈ eachindex(names_partitioned[i], params_partitioned[i])
+            for name ∈ propertynames(params_partitioned[i][j])
+                propname = Symbol(names_partitioned[i][j], "₊", name)
+                #TODO: this'll require some generalization to support weight params
+                param_namemap[propname] = ParamIndex(i, j, name)
+            end
+        end
+    end
+    param_namemap
+end
+
+
 function Base.getindex(u::ArrayPartition, idx::StateIndex)
     u.x[idx]
 end
@@ -63,7 +90,7 @@ end
 
 
 function SymbolicIndexingInterface.independent_variable_symbols(sys::GraphSystem)
-    :t
+    (:t,)
 end
 
 function SymbolicIndexingInterface.is_time_dependent(sys::GraphSystem)

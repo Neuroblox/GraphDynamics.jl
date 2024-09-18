@@ -1,8 +1,5 @@
 #------------------------------------------------------------
 # Subsystem parameters
-struct SubsystemParams{Name, Params <: NamedTuple}
-    params::Params
-end
 function SubsystemParams{Name}(nt::NT) where {Name, NT <: NamedTuple}
     SubsystemParams{Name, NT}(nt)
 end
@@ -33,9 +30,6 @@ Base.propertynames(p::SubsystemParams) = propertynames(NamedTuple(p))
 
 #------------------------------------------------------------
 # Subsystem states
-struct SubsystemStates{Name, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
-    states::States
-end
 function SubsystemStates{Name, Eltype, States}(v::AbstractVector) where {Name, Eltype, States <: NamedTuple}
     SubsystemStates{Name, Eltype, States}(States(v))
 end
@@ -94,9 +88,9 @@ end
 
 #------------------------------------------------------------
 # Subsystem
-struct Subsystem{Name, Eltype, States, Params}
-    states::SubsystemStates{Name, Eltype, States}
-    params::SubsystemParams{Name, Params}
+function Subsystem{T}(;states, params) where {T}
+    ET = eltype(states)
+    Subsystem{T, ET, typeof(states), typeof(params)}(SubsystemStates{T}(states), SubsystemParams{T}(params))
 end
 function Base.show(io::IO, sys::Subsystem{Name, Eltype}) where {Name, Eltype}
     print(io,
