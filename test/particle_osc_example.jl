@@ -1,4 +1,4 @@
-using GraphDynamics, OrdinaryDiffEq
+using GraphDynamics, OrdinaryDiffEq, Test
 
 struct Particle end
 function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
@@ -34,16 +34,15 @@ function ((;fac)::Coulomb)(a, b)
     -fac * a.q * b.q * sign(a.x - b.x)/(abs(a.x - b.x) + 1e-10)^2
 end
 
-subsystems_partitioned = ([Subsystem{Particle}(states=(;x= 1.0, v=0.0), params=(;m=1.0, q=1.0)),
-                           Subsystem{Particle}(states=(;x=-1.0, v=0.0), params=(;m=2.0, q=1.0))],
-                          [Subsystem{Oscillator}(states=(;x=0.0, v=1.0), params=(;x₀=0.0, m=3.0, k=1.0, q=1.0))])
+# put some garbage values in here for states and params, but we'll set them to reasonable values later with the
+# u0map and param_map
+subsystems_partitioned = ([Subsystem{Particle}(states=(;x= NaN, v=0.0), params=(;m=1.0, q=1.0)),
+                           Subsystem{Particle}(states=(;x=-1.0, v=Inf), params=(;m=2.0, q=1.0))],
+                          [Subsystem{Oscillator}(states=(;x=-Inf, v=1.0), params=(;x₀=0.0, m=-3000.0, k=1.0, q=1.0))])
 
 states_partitioned = map(v -> map(get_states, v), subsystems_partitioned)
 params_partitioned = map(v -> map(get_params, v), subsystems_partitioned)
 names_partitioned = ([:particle1, :particle2], [:osc])
-
-
-
 
 spring_conns_par_par = NotConnected()
 spring_conns_par_osc = [Spring(1)
@@ -76,7 +75,13 @@ connection_matrices = ConnectionMatrices((spring_conns, coulomb_conns))
 
 sys = ODEGraphSystem(;connection_matrices, states_partitioned, params_partitioned, names_partitioned)
 tspan = (0.0, 20.0)
-prob = ODEProblem(sys, [], tspan)
+ 
+prob = ODEProblem(sys,
+                  # Fix the garbage state values
+                  [:particle1₊x => 1.0, :particle2₊v => 0.0, :osc₊x => 0.0],
+                  tspan,
+                  # fix the garbage param values
+                  [:osc₊m => 3.0])
 sol = solve(prob, Tsit5())
 
 @test sol[:particle1₊x][end] ≈ 1.4923823131014389

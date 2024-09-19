@@ -15,7 +15,7 @@ struct ParamIndex #todo: this'll require some generalization to support weight p
     prop::Symbol
 end
 
-function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{<:AbstractVector{<:SubsystemStates}}})
+function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemStates}}})
     state_namemap = Dict{Symbol, StateIndex}()
     for i ∈ eachindex(names_partitioned, states_partitioned)
         for j ∈ eachindex(names_partitioned[i], states_partitioned[i])
@@ -27,7 +27,7 @@ function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{<:A
     end
     state_namemap
 end
-function compute_namemap(names_partitioned, params_partitioned::Tuple{Vararg{<:AbstractVector{<:SubsystemParams}}})
+function compute_namemap(names_partitioned, params_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemParams}}})
     param_namemap = Dict{Symbol, ParamIndex}()
     for i ∈ eachindex(names_partitioned, params_partitioned)
         for j ∈ eachindex(names_partitioned[i], params_partitioned[i])
@@ -49,13 +49,30 @@ function Base.getindex(u::Tuple, (;tup_index, v_index, state_index)::StateIndex)
     u[tup_index][state_index, v_index]
 end
 
+function Base.setindex!(u::ArrayPartition, val, idx::StateIndex)
+    setindex!(u.x, val, idx)
+end
+function Base.setindex!(u::Tuple, val, (;tup_index, v_index, state_index)::StateIndex)
+    setindex!(u[tup_index], val, state_index, v_index)
+end
 
+function Base.getindex(u::GraphSystemParameters, p::ParamIndex)
+    u.params_partitioned[p]
+end
 function Base.getindex(u::Tuple, (;tup_index, v_index, prop)::ParamIndex)
     getproperty(u[tup_index][v_index], prop)
 end
-function Base.getindex(u::GraphSystemParameters, p::ParamIndex)
-    u.subsystem_params[p]
+
+
+function Base.setindex!(u::GraphSystemParameters, val, p::ParamIndex)
+    setindex!(u.params_partitioned, val, p)
 end
+function Base.setindex!(u::Tuple, val, (;tup_index, v_index, prop)::ParamIndex)
+    params = u[tup_index][v_index]
+    @reset params[prop] = val
+    setindex!(u[tup_index], params, v_index)
+end
+
 
 
 function SymbolicIndexingInterface.is_variable(g::GraphSystem, sym)
@@ -76,8 +93,11 @@ function SymbolicIndexingInterface.parameter_index(g::GraphSystem, sym)
     g.param_namemap[sym]
 end
 
+function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters)
+    p.params_partitioned
+end
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i::ParamIndex)
-    p.subsystem_params[i]
+    p.params_partitioned[i]
 end
 
 function SymbolicIndexingInterface.parameter_symbols(g::GraphSystem)

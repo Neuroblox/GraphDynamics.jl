@@ -90,11 +90,14 @@ using SciMLBase:
 using RecursiveArrayTools: ArrayPartition
 
 using SymbolicIndexingInterface:
-    SymbolicIndexingInterface
+    SymbolicIndexingInterface,
+    setu,
+    setp
 
 using Accessors:
     Accessors,
-    @set
+    @set,
+    @reset
 
 using ConstructionBase:
     ConstructionBase
@@ -114,12 +117,12 @@ include("utils.jl")
 #----------------------------------------------------------
 # API functions to be implemented by new Systems
 
-struct SubsystemParams{Name, Params <: NamedTuple}
-    params::Params
-end
-
 struct SubsystemStates{Name, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
     states::States
+end
+
+struct SubsystemParams{Name, Params <: NamedTuple}
+    params::Params
 end
 
 struct Subsystem{Name, Eltype, States, Params}

@@ -3,15 +3,25 @@ function (::Type{T})(g::Gsys, args...; kwargs...) where {T <: SciMLBase.Abstract
     throw(ArgumentError("GraphSystems.jl does not yet support the use of $(Gsys.name.wrapper) in $T.\nThis is either a feature that is not yet supported, or you may have accidentally done something incorrect such as passing an ODEGraphSystem to an SDEProblem."))
 end
 
-function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[]; scheduler=SerialScheduler(), tstops=Float64[], kwargs...)
-    nt = _problem(g, u0map, tspan, param_map; scheduler)
+function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[];
+                              scheduler=SerialScheduler(), tstops=Float64[],
+                              allow_nonconcrete=false, kwargs...)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete)
     (; f, u, tspan, p, callback) = nt
     tstops = vcat(tstops, nt.tstops)
-    ODEProblem(f, u, tspan, p; callback, tstops, kwargs...)
+    prob = ODEProblem(f, u, tspan, p; callback, tstops, kwargs...)
+    for (k, v) ∈ u0map
+        setu(prob, k)(prob, v)
+    end
+    for (k, v) ∈ param_map
+        setp(prob, k)(prob, v)
+    end
+    prob
 end
 function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
-                              scheduler=SerialScheduler(), tstops=Float64[], kwargs...)
-    nt = _problem(g, u0map, tspan, param_map; scheduler)
+                              scheduler=SerialScheduler(), tstops=Float64[],
+                              allow_nonconcrete=false, kwargs...)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete)
     (; f, u, tspan, p, callback) = nt
     
     noise_rate_prototype = nothing # zeros(length(u)) # this'll need to change once we support correlated noise
@@ -25,10 +35,7 @@ Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV}
     state_types_val::STV
 end
 
-function _problem(g::GraphSystem, u0map, tspan, param_map=[]; scheduler=SerialScheduler)
-    isempty(u0map) || error("Specifying a state map is not yet implemented")
-    isempty(param_map)  || error("Specifying a parameter map is not yet implemented")
-
+function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete)
     (; states_partitioned,
      params_partitioned,
      connection_matrices,
@@ -70,6 +77,9 @@ function _problem(g::GraphSystem, u0map, tspan, param_map=[]; scheduler=SerialSc
     state_types_val = Val(Tuple{map(eltype, states_partitioned)...})
     
     u = ArrayPartition(map(v -> stack(v), states_partitioned))
+    if !allow_nonconcrete && !isconcretetype(eltype(u)) && !all(isconcretetype ∘ eltype, states_partitioned)
+        error(ArgumentError("The provided subsystem states do not have a concrete eltype. All partitions must contain the same eltype. Got `eltype(u) = $(eltype(u))`."))
+    end
 
     ce = nce > 0 ? VectorContinuousCallback(continuous_condition, continuous_affect!, nce) : nothing
     de = nde > 0 ? DiscreteCallback(discrete_condition, discrete_affect!) : nothing
