@@ -10,15 +10,10 @@ macro public(ex)
 end
 
 @public (
-    Subsystem,
-    SubsystemParams,
-    SubsystemStates,
-    
     subsystem_differential,
     apply_subsystem_noise!,
     subsystem_differential_requires_inputs,
 
-    
     initialize_input,
     combine,
 
@@ -32,22 +27,11 @@ end
     apply_discrete_event!,
     discrete_events_require_inputs,
 
-
     must_run_before,
 
     isstochastic,
-    
-    GraphSystem,
-    ODEGraphSystem,
-    SDEGraphSystem,
-    
-    get_states,
-    get_params,
-    event_times,
 
-    ConnectionMatrices,
-    ConnectionMatrix,
-    NotConnected,
+    event_times,
 )
 
 export
