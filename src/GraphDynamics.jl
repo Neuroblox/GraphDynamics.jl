@@ -10,15 +10,10 @@ macro public(ex)
 end
 
 @public (
-    Subsystem,
-    SubsystemParams,
-    SubsystemStates,
-    
     subsystem_differential,
     apply_subsystem_noise!,
     subsystem_differential_requires_inputs,
 
-    
     initialize_input,
     combine,
 
@@ -32,22 +27,11 @@ end
     apply_discrete_event!,
     discrete_events_require_inputs,
 
-
     must_run_before,
 
     isstochastic,
-    
-    GraphSystem,
-    ODEGraphSystem,
-    SDEGraphSystem,
-    
-    get_states,
-    get_params,
-    event_times,
 
-    ConnectionMatrices,
-    ConnectionMatrix,
-    NotConnected,
+    event_times,
 )
 
 export
@@ -90,11 +74,14 @@ using SciMLBase:
 using RecursiveArrayTools: ArrayPartition
 
 using SymbolicIndexingInterface:
-    SymbolicIndexingInterface
+    SymbolicIndexingInterface,
+    setu,
+    setp
 
 using Accessors:
     Accessors,
-    @set
+    @set,
+    @reset
 
 using ConstructionBase:
     ConstructionBase
@@ -114,12 +101,12 @@ include("utils.jl")
 #----------------------------------------------------------
 # API functions to be implemented by new Systems
 
-struct SubsystemParams{Name, Params <: NamedTuple}
-    params::Params
-end
-
 struct SubsystemStates{Name, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
     states::States
+end
+
+struct SubsystemParams{Name, Params <: NamedTuple}
+    params::Params
 end
 
 struct Subsystem{Name, Eltype, States, Params}

@@ -27,6 +27,13 @@ Base.NamedTuple(p::SubsystemParams) = getfield(p, :params)
 Base.Tuple(s::SubsystemParams) = Tuple(getfield(s, :params))
 Base.getproperty(p::SubsystemParams, prop::Symbol) = getproperty(NamedTuple(p), prop)
 Base.propertynames(p::SubsystemParams) = propertynames(NamedTuple(p))
+function Base.setindex(p::SubsystemParams{Name}, val, param) where {Name}
+    SubsystemParams{Name}(Base.setindex(NamedTuple(p), val, param))
+end
+function Base.convert(::Type{SubsystemParams{Name, NT}}, p::SubsystemParams{Name}) where {Name, NT}
+    SubsystemParams{Name}(convert(NT, NamedTuple(p)))
+end
+
 
 #------------------------------------------------------------
 # Subsystem states
