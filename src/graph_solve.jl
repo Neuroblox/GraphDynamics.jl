@@ -299,7 +299,6 @@ tany(f, coll; kwargs...) = tmapreduce(f, |, coll; kwargs...)
                 @nexprs $Len k -> begin
                     M = connection_matrices[nc][k, i]
                     if has_discrete_events(eltype(M))
-                        #tany(foo(Val(k), Val(i), Val(NConn), M, t), eachindex(states_partitioned[i])) && return true
                         for j ∈ eachindex(states_partitioned[i])
                             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
                                 discrete_event_condition(Mlj, t) && return true
@@ -308,15 +307,6 @@ tany(f, coll; kwargs...) = tmapreduce(f, |, coll; kwargs...)
                     end
                 end
             end
-        end
-        false
-    end
-end
-
-function foo(::Val{k}, ::Val{i}, ::Val{NConn}, M, t) where {i, NConn, k}
-    function f(j)
-        for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-            discrete_event_condition(Mlj, t) && return true
         end
         false
     end
