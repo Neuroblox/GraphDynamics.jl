@@ -21,8 +21,8 @@ function ConstructionBase.setproperties(s::SubsystemParams{T}, patch::NamedTuple
     SubsystemParams{T}(props′)
 end
 
-get_name(::SubsystemParams{Name}) where {Name} = Name
-get_name(::Type{<:SubsystemParams{Name}}) where {Name} = Name
+get_tag(::SubsystemParams{Name}) where {Name} = Name
+get_tag(::Type{<:SubsystemParams{Name}}) where {Name} = Name
 Base.NamedTuple(p::SubsystemParams) = getfield(p, :params)
 Base.Tuple(s::SubsystemParams) = Tuple(getfield(s, :params))
 Base.getproperty(p::SubsystemParams, prop::Symbol) = getproperty(NamedTuple(p), prop)
@@ -42,6 +42,10 @@ function SubsystemStates{Name, Eltype, States}(v::AbstractVector) where {Name, E
 end
 function SubsystemStates{Name}(nt::NamedTuple{state_names, NTuple{N, Eltype}}) where {Name, state_names, N, Eltype}
     SubsystemStates{Name, Eltype, typeof(nt)}(nt)
+end
+function SubsystemStates{Name}(nt::NamedTuple{state_names, <:NTuple{N, Any}}) where {Name, state_names, N}
+    nt_promoted = NamedTuple{state_names}(promote(nt...))
+    SubsystemStates{Name}(nt_promoted)
 end
 function SubsystemStates{Name}(nt::NamedTuple{(), Tuple{}}) where {Name}
     SubsystemStates{Name, Union{}, NamedTuple{(), Tuple{}}}(nt)
@@ -81,8 +85,8 @@ function ConstructionBase.setproperties(s::SubsystemStates{T}, patch::NamedTuple
     SubsystemStates{T}(props′)
 end
 
-get_name(::SubsystemStates{Name}) where {Name} = Name
-get_name(::Type{<:SubsystemStates{Name}}) where {Name} = Name
+get_tag(::SubsystemStates{Name}) where {Name} = Name
+get_tag(::Type{<:SubsystemStates{Name}}) where {Name} = Name
 Base.NamedTuple(s::SubsystemStates) = getfield(s, :states)
 Base.Tuple(s::SubsystemStates) = Tuple(getfield(s, :states))
 Base.getproperty(s::SubsystemStates, prop::Symbol) = getproperty(NamedTuple(s), prop)
@@ -93,12 +97,25 @@ function state_ind(::Type{SubsystemStates{Name, Eltype, NamedTuple{names, Tup}}}
     i = findfirst(==(s), names)
 end
 
+function Base.convert(::Type{SubsystemStates{Name, Eltype, NT}}, s::SubsystemStates{Name}) where {Name, Eltype, NT}
+    SubsystemStates{Name}(convert(NT, NamedTuple(s)))
+end
+function Base.convert(::Type{SubsystemStates{Name, Eltype}},
+                      s::SubsystemStates{Name, <:Any, <:NamedTuple{state_names}}) where {Name, Eltype, state_names}
+    nt = NamedTuple{state_names}(convert.(Eltype, Tuple(s)))
+    SubsystemStates{Name, Eltype, typeof(nt)}(nt)
+end
+
 #------------------------------------------------------------
 # Subsystem
 function Subsystem{T}(;states, params) where {T}
-    ET = eltype(states)
-    Subsystem{T, ET, typeof(states), typeof(params)}(SubsystemStates{T}(states), SubsystemParams{T}(params))
+    Subsystem{T}(SubsystemStates{T}(states), SubsystemParams{T}(params))
 end
+function Subsystem{T}(states::SubsystemStates{T, Eltype, States},
+                      params::SubsystemParams{T, Params}) where {T, Eltype, States, Params}
+    Subsystem{T, Eltype, States, Params}(states, params)
+end
+
 function Base.show(io::IO, sys::Subsystem{Name, Eltype}) where {Name, Eltype}
     print(io,
           "$Subsystem{$Name, $Eltype}(states = ",
@@ -124,15 +141,40 @@ function ConstructionBase.setproperties(s::Subsystem{T, Eltype, States, Params},
     Subsystem{T, Eltype, States, Params}(SubsystemStates{T}(states′), SubsystemParams{T}(params′))
 end
 
+function Base.convert(::Type{Subsystem{Name, Eltype, SNT, PNT}}, s::Subsystem{Name}) where {Name, Eltype, SNT, PNT}
+    Subsystem{Name}(convert(SubsystemStates{Name, Eltype, SNT}, get_states(s)),
+                    convert(SubsystemParams{Name, PNT}, get_params(s)))
+end
+function Base.convert(::Type{Subsystem{Name, Eltype}}, s::Subsystem{Name}) where {Name, Eltype}
+    Subsystem{Name}(convert(SubsystemStates{Name, Eltype}, get_states(s)), get_params(s))
+end
 
+@generated function promote_nt_type(::Type{NamedTuple{names, T1}},
+                                    ::Type{NamedTuple{names, T2}}) where {names, T1, T2}
+    NamedTuple{names, Tuple{(promote_type(T1.parameters[i], T2.parameters[i]) for i ∈ eachindex(names))...}}
+end
+
+function Base.promote_rule(::Type{SubsystemParams{Name, NT1}},
+                           ::Type{SubsystemParams{Name, NT2}}) where {Name, NT1, NT2}
+    SubsystemParams{Name, promote_nt_type(NT1, NT2)}
+end
+function Base.promote_rule(::Type{SubsystemStates{Name, ET1, NT1}},
+                           ::Type{SubsystemStates{Name, ET2, NT2}}) where {Name, ET1, ET2, NT1, NT2}
+    SubsystemStates{Name, promote_type(ET1, ET2), promote_nt_type(NT1, NT2)}
+end
+
+function Base.promote_rule(::Type{Subsystem{Name, ET1, SNT1, PNT1}},
+                           ::Type{Subsystem{Name, ET2, SNT2, PNT2}}) where {Name, ET1, SNT1, PNT1, ET2, SNT2, PNT2}
+    Subsystem{Name, promote_type(ET1, ET2), promote_nt_type(SNT1, SNT2), promote_nt_type(PNT1, PNT2)}
+end
 
 get_states(s::Subsystem) = getfield(s, :states)
 get_params(s::Subsystem) = getfield(s, :params)
-get_name(::Subsystem{Name}) where {Name} = Name
+get_tag(::Subsystem{Name}) where {Name} = Name
 
 
 
-get_name(::Type{<:Subsystem{Name}}) where {Name} = Name
+get_tag(::Type{<:Subsystem{Name}}) where {Name} = Name
 
 
 function Base.getproperty(s::Subsystem{<:Any, States, Params},

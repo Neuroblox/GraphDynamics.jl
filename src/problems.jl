@@ -6,7 +6,7 @@ end
 function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[];
                               scheduler=SerialScheduler(), tstops=Float64[],
                               allow_nonconcrete=false, kwargs...)
-    nt = _problem(g, tspan; scheduler, allow_nonconcrete)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map)
     (; f, u, tspan, p, callback) = nt
     tstops = vcat(tstops, nt.tstops)
     prob = ODEProblem(f, u, tspan, p; callback, tstops, kwargs...)
@@ -21,11 +21,18 @@ end
 function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
                               scheduler=SerialScheduler(), tstops=Float64[],
                               allow_nonconcrete=false, kwargs...)
-    nt = _problem(g, tspan; scheduler, allow_nonconcrete)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map)
     (; f, u, tspan, p, callback) = nt
     
     noise_rate_prototype = nothing # zeros(length(u)) # this'll need to change once we support correlated noise
-    SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
+    prob = SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
+    for (k, v) ∈ u0map
+        setu(prob, k)(prob, v)
+    end
+    for (k, v) ∈ param_map
+        setp(prob, k)(prob, v)
+    end
+    prob
 end
 
 Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV}
@@ -35,7 +42,7 @@ Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV}
     state_types_val::STV
 end
 
-function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete)
+function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map)
     (; states_partitioned,
      params_partitioned,
      connection_matrices,
@@ -43,6 +50,25 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete)
      composite_discrete_events_partitioned,
      composite_continuous_events_partitioned,) = g
 
+    total_eltype = let
+        states_eltype = mapreduce(promote_type, states_partitioned) do v
+            eltype(eltype(v))
+        end
+        u0map_eltype = mapreduce(promote_type, u0map; init=Union{}) do (k, v)
+            typeof(v)
+        end
+        promote_type(states_eltype, u0map_eltype)
+    end
+
+    re_eltype(s::SubsystemStates{T}) where {T} = convert(SubsystemStates{T, total_eltype}, s) 
+    states_partitioned = map(states_partitioned) do v
+        if eltype(eltype(v)) <: total_eltype && eltype(eltype(v)) !== Union{}
+            v
+        else
+            re_eltype.(v)
+        end
+    end
+    
     length(states_partitioned) == length(params_partitioned) ||
         error("Incompatible state and parameter lengths")
     for i ∈ eachindex(states_partitioned, params_partitioned)

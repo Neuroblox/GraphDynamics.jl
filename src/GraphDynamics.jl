@@ -41,6 +41,7 @@ export
     GraphSystem,
     ODEGraphSystem,
     SDEGraphSystem,
+    get_tag,
     get_states,
     get_params,
     ODEProblem,
@@ -69,7 +70,8 @@ using SciMLBase:
     CallbackSet,
     VectorContinuousCallback,
     ContinuousCallback,
-    DiscreteCallback
+    DiscreteCallback,
+    remake
 
 using RecursiveArrayTools: ArrayPartition
 
@@ -101,20 +103,31 @@ include("utils.jl")
 #----------------------------------------------------------
 # API functions to be implemented by new Systems
 
-struct SubsystemStates{Name, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
+struct SubsystemStates{T, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
     states::States
 end
 
-struct SubsystemParams{Name, Params <: NamedTuple}
+struct SubsystemParams{T, Params <: NamedTuple}
     params::Params
 end
 
-struct Subsystem{Name, Eltype, States, Params}
-    states::SubsystemStates{Name, Eltype, States}
-    params::SubsystemParams{Name, Params}
+"""
+    Subsystem{T, Eltype, StateNT, ParamNT}
+
+A `Subsystem` struct describes a complete subcomponent to an `GraphSystem`. This stores a `SubsystemStates` to describe the continuous dynamical state of the subsystem, and a `GraphSystemParams` which describes various non-dynamical parameters of the subsystem. The type parameter `T` is the subsystem's \"tag\" which labels what sort of subsystem it is.
+
+See also `subsystem_differential`, `SubsystemStates`, `SubsystemParams`.
+
+For example, if we wanted to describe a system where one sub-component is a billiard ball,
+
+
+"""
+struct Subsystem{T, Eltype, States, Params}
+    states::SubsystemStates{T, Eltype, States}
+    params::SubsystemParams{T, Params}
 end
 
-function get_name end
+function get_tag end
 function get_params end
 function get_states end
 
