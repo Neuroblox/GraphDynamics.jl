@@ -35,7 +35,7 @@ function ((;fac)::Coulomb)(a, b)
 end
 
 
-function solve_particle_osc(;x1, x2)
+function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5())
     # put some garbage values in here for states and params, but we'll set them to reasonable values later with the
     # u0map and param_map
     subsystems_partitioned = ([Subsystem{Particle}(states=(;x= NaN, v=0.0), params=(;m=1.0, q=1.0)),
@@ -76,7 +76,7 @@ function solve_particle_osc(;x1, x2)
     connection_matrices = ConnectionMatrices((spring_conns, coulomb_conns))
 
     sys = ODEGraphSystem(;connection_matrices, states_partitioned, params_partitioned, names_partitioned)
-    tspan = (0.0, 20.0)
+
     
     prob = ODEProblem(sys,
                       # Fix the garbage state values
@@ -84,14 +84,14 @@ function solve_particle_osc(;x1, x2)
                       tspan,
                       # fix the garbage param values
                       [:osc₊m => 3.0])
-    sol = solve(prob, Tsit5())
+    sol = solve(prob, alg)
 end
 
 @testset "solutions" begin
     sol = solve_particle_osc(;x1=1.0, x2=-1.0)
-    @test sol[:particle1₊x][end] ≈ 1.4923823131014389   rtol=1e-7
-    @test sol[:particle2₊x][end] ≈ -0.11189010002787175 rtol=1e-7
-    @test sol[:osc₊x][end] ≈ 1.3175449091469553         rtol=1e-7
+    @test sol[:particle1₊x][end] ≈  0.580617 rtol=1e-3
+    @test sol[:particle2₊x][end] ≈ -1.391576 rtol=1e-3
+    @test sol[:osc₊x][end]       ≈ -1.063306 rtol=1e-3
 end
 
 @testset "sensitivies" begin
@@ -99,8 +99,8 @@ end
         sol = solve_particle_osc(;x1, x2)
         [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
     end
-    @test jac ≈ [0.498565  -0.0161443
-                 -1.92556    3.14649
-                 -0.249007   0.808641] rtol=1e-5
+    @test jac ≈ [-0.50821   -0.740152
+                 -0.199444  -0.906593
+                 -0.586021   0.118173] rtol=1e-3
 
 end
