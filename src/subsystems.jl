@@ -201,19 +201,30 @@ Base.eltype(::Type{<:Subsystem{<:Any, T}}) where {T} = T
 struct VectorOfSubsystemStates{States, Mat <: AbstractMatrix} <: AbstractVector{States}
     data::Mat
 end
-VectorOfSubsystemStates{States}(v::Mat) where {States, Mat} = VectorOfSubsystemStates{States, Mat}(v)
+function VectorOfSubsystemStates{SubsystemStates{Name, T, NamedTuple{snames, Tup}}}(
+    v::AbstractMatrix{U}
+    ) where {Name, T, U, snames, Tup}
+    V = promote_type(T,U)
+    States = SubsystemStates{Name, V, NamedTuple{snames, NTuple{length(snames), V}}}
+    VectorOfSubsystemStates{States, typeof(v)}(v)
+end
 
 Base.size(v::VectorOfSubsystemStates{States}) where {States} = (size(v.data, 2),)
 
 @propagate_inbounds function Base.getindex(v::VectorOfSubsystemStates{States}, idx::Integer) where {States <: SubsystemStates}
     l = length(States)
-    #@boundscheck checkbounds(v.data, 1:l, idx)
+    @boundscheck checkbounds(v.data, 1:l, idx)
     @inbounds States(view(v.data, 1:l, idx))
 end
+
+@noinline function sym_not_found_error(::Type{SubsystemStates{Name, T, NamedTuple{names}}}, s::Symbol) where {Name, T, names}
+    error("SubsystemStates{$Name} does not have a field $s, valid fields are $names")
+end
+
 @propagate_inbounds function Base.getindex(v::VectorOfSubsystemStates{States}, s::Symbol, idx::Integer) where {States <: SubsystemStates}
     i = state_ind(States, s)
     if isnothing(i)
-        error("Something helpful")
+        sym_not_found_error(States, s)
     end
     v.data[i, idx]
 end
@@ -231,7 +242,7 @@ end
                                             idx::Integer) where {States <: SubsystemStates}
     i = state_ind(States, s)
     if isnothing(i)
-        error("Something helpful")
+        sym_not_found_error(States, s)
     end
     v.data[i, idx] = val
 end
