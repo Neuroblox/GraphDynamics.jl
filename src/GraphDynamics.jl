@@ -2,7 +2,8 @@ module GraphDynamics
 
 macro public(ex)
     if VERSION >= v"1.11.0-DEV.469"
-        args = ex isa Symbol ? (ex,) : Base.isexpr(ex, :tuple) ? ex.args : error("malformed input to `@public`: $ex")
+        args = ex isa Symbol ? (ex,) : Base.isexpr(ex, :tuple) ? ex.args :
+            error("malformed input to `@public`: $ex")
         esc(Expr(:public, args...))
     else
         nothing
@@ -190,7 +191,9 @@ function initialize_input end
 When a `Subsystem` is connected to multiple other subsystems, all of the inputs sent to that `Subsystem` via the connections must be `combine`'d together into one input representing the accumulation of all of the inputs. `combine` is the function used to accumulate these inputs together at each step. Defaults to addition, but can have methods added to it for more exotic input types.
 """
 combine(x::Number, y::Number) = x + y
-combine(x::NamedTuple, y::NamedTuple) = typeof(x)(combine.(Tuple(x), Tuple(y)))
+function combine(x::NamedTuple{names}, y::NamedTuple{names}) where {names}
+    NamedTuple{names}(combine.(Tuple(x), Tuple(y)))
+end
 
 
 """
@@ -224,7 +227,7 @@ end
 """
     event_times(::T) = ()
 
-add methods to this function if a subsystem or connection type has a discrete event that triggers at pre-defined times. This will be used to add `tstops` to the `ODEProblem` or `SDEProblem` automatically.
+add methods to this function if a subsystem or connection type has a discrete event that triggers at pre-defined times. This will be used to add `tstops` to the `ODEProblem` or `SDEProblem` automatically during `GraphSystem` construction. This is vital for discrete events which only trigger at a specific time.
 """
 event_times(::Any) = ()
 
