@@ -33,6 +33,7 @@ end
     isstochastic,
 
     event_times,
+    connection_index
 )
 
 export
@@ -243,6 +244,23 @@ Base.getindex(m::ConnectionMatrix, i, j) = m.data[i][j]
 Base.getindex(m::ConnectionMatrices, i) = m.matrices[i]
 Base.length(m::ConnectionMatrices) = length(m.matrices)
 Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
+
+"""
+    connection_index(ConnType, M::ConnectionMatrices)
+
+give the first index `n` such that `M[n]` is a `ConnectionMatrix{N, ConnType} where {N}`, or throw an error if no such index exists.
+"""
+connection_index(::Type{ConnType}, M::ConnectionMatrices) where {ConnType} = _conn_index(ConnType, M.matrices, 1)
+function _conn_index(::Type{ConnType}, tup::Tuple, i) where {ConnType}
+    if first(tup) isa ConnectionMatrix{N, ConnType} where {N}
+        return i
+    else
+        _conn_index(ConnType, Base.tail(tup), i+1)
+    end
+end
+@noinline _conn_index(::Type{ConnType}, ::Tuple{}, _) where {ConnType} =
+    error("ConnectionMatrices did not contain a ConnectionMatrix with connection type ", ConnType)
+
 
 abstract type GraphSystem end
 
