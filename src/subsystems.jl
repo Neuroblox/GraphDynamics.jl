@@ -198,12 +198,15 @@ Base.eltype(::Type{<:Subsystem{<:Any, T}}) where {T} = T
 
 #-------------------------------------------------------------------------
 
+@generated function to_vec_o_states(state_data::NTuple{Len, Any}, ::Val{StateTypes}) where {Len, StateTypes}
+    state_types = StateTypes.parameters
+    Expr(:tuple, (:(VectorOfSubsystemStates{$(state_types[i])}(state_data[$i])) for i ∈ 1:Len)...)
+end
+
 struct VectorOfSubsystemStates{States, Mat <: AbstractMatrix} <: AbstractVector{States}
     data::Mat
 end
-function VectorOfSubsystemStates{SubsystemStates{Name, T, NamedTuple{snames, Tup}}}(
-    v::AbstractMatrix{U}
-    ) where {Name, T, U, snames, Tup}
+function VectorOfSubsystemStates{SubsystemStates{Name, T, NamedTuple{snames, Tup}}}(v::AbstractMatrix{U}) where {Name, T, U, snames, Tup}
     V = promote_type(T,U)
     States = SubsystemStates{Name, V, NamedTuple{snames, NTuple{length(snames), V}}}
     VectorOfSubsystemStates{States, typeof(v)}(v)
@@ -217,8 +220,8 @@ Base.size(v::VectorOfSubsystemStates{States}) where {States} = (size(v.data, 2),
     @inbounds States(view(v.data, 1:l, idx))
 end
 
-@noinline function sym_not_found_error(::Type{SubsystemStates{Name, T, NamedTuple{names}}}, s::Symbol) where {Name, T, names}
-    error("SubsystemStates{$Name} does not have a field $s, valid fields are $names")
+@noinline function sym_not_found_error(::Type{S}, s::Symbol) where {S<:SubsystemStates}
+    error("$S does not have a field $s")
 end
 
 @propagate_inbounds function Base.getindex(v::VectorOfSubsystemStates{States}, s::Symbol, idx::Integer) where {States <: SubsystemStates}
@@ -247,7 +250,43 @@ end
     v.data[i, idx] = val
 end
 
-@generated function to_vec_o_states(state_data::NTuple{Len, Any}, ::Val{StateTypes}) where {Len, StateTypes}
-    state_types = StateTypes.parameters
-    Expr(:tuple, (:(VectorOfSubsystemStates{$(state_types[i])}(state_data[$i])) for i ∈ 1:Len)...)
+
+
+#-------------------------------------------------------------------------
+struct SubsystemStatesView{States, Mat <: AbstractMatrix} <: AbstractArray{States, 0}
+    data::Mat
+    idx::Int
+end
+@propagate_inbounds function Base.view(v::VectorOfSubsystemStates{States, Mat}, idx::Int) where {States, Mat}
+    l = length(States)
+    @boundscheck checkbounds(v.data, 1:l, idx)
+    SubsystemStatesView{States, Mat}(v.data, idx)
+end
+Base.size(::SubsystemStatesView) = ()
+function Base.getindex(v::SubsystemStatesView{States}) where {States <: SubsystemStates}
+    l = length(States)
+    @inbounds States(view(v.data, 1:l, v.idx))
+end
+@propagate_inbounds function Base.getindex(v::SubsystemStatesView{States}, s::Symbol) where {States <: SubsystemStates}
+    i = state_ind(States, s)
+    if isnothing(i)
+        sym_not_found_error(States, s)
+    end
+    @inbounds v.data[i, v.idx]
+end
+
+@propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, state::States) where {States <: SubsystemStates}
+    l = length(States)
+    idx = v.idx
+    @inbounds v.data[1:l, idx] .= Tuple(state)
+    v
+end
+
+@propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, val, s::Symbol) where {States <: SubsystemStates}
+    i = state_ind(States, s)
+    if isnothing(i)
+        sym_not_found_error(States, s)
+    end
+    @inbounds v.data[i, v.idx] = val
+    v
 end

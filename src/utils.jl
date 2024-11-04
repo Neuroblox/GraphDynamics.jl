@@ -3,7 +3,7 @@ valueof(x) = x
 
 # this just makes it so that I can easily replace all uses of `@inbounds ex` with just `ex`.
 macro inbounds(ex)
-    # ex
+    #esc(ex)
     esc(:($Base.@inbounds $ex))
 end
 
