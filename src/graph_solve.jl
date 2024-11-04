@@ -334,7 +334,6 @@ end
                     sview = @view states_partitioned[i][j]
                     pview = @view params_partitioned[i][j]
                     if discrete_event_condition(sys, t)
-                        # println("helllllo")
                         F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                         if discrete_events_require_inputs(sys)
                             input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
