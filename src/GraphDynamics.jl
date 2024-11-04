@@ -32,7 +32,8 @@ end
 
     isstochastic,
 
-    event_times
+    event_times,
+    ForeachConnectedSubsystem
 )
 
 export
@@ -231,6 +232,7 @@ add methods to this function if a subsystem or connection type has a discrete ev
 event_times(::Any) = ()
 
 abstract type ConnectionRule end
+Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 struct NotConnected <: ConnectionRule end
 (::NotConnected)(l, r) = zero(promote_type(eltype(l), eltype(r)))
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected, AbstractMatrix{CR}}}}}
