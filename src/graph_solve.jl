@@ -277,28 +277,32 @@ end
 #----------------------------------------------------------
 # Infra. for discrete events. 
 #----------------------------------------------------------
-function discrete_condition(u, t, integrator)
-    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
-    states_partitioned = to_vec_o_states(u.x, state_types_val)
-    _discrete_condition!(states_partitioned, params_partitioned, t, connection_matrices)
-end
 
-using GraphDynamics.OhMyThreads: tmapreduce
-tany(f, coll; kwargs...) = tmapreduce(f, |, coll; kwargs...)
+function discrete_condition(u, t, integrator)
+    (;params_partitioned, state_types_val, connection_matrices, discrete_event_cache) = integrator.p
+    states_partitioned = to_vec_o_states(u.x, state_types_val)
+    _discrete_condition!(states_partitioned, params_partitioned, t, connection_matrices, discrete_event_cache)
+end
 
 @generated function _discrete_condition!(states_partitioned    ::NTuple{Len, Any},
                                          params_partitioned    ::NTuple{Len, Any},
                                          t,
-                                         connection_matrices::ConnectionMatrices{NConn},) where {Len, NConn}
-    quote 
+                                         connection_matrices::ConnectionMatrices{NConn},
+                                         discrete_event_cache  ::NTuple{Len, Any}) where {Len, NConn}
+    quote
+        trigger = false
         @nexprs $Len i -> begin
             if has_discrete_events(eltype(states_partitioned[i]))
                 for j ∈ eachindex(states_partitioned[i])
                     F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
-                    discrete_event_condition(Subsystem(states_partitioned[i][j], params_partitioned[i][j]), t, F) && return true
+                    sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                    cond = discrete_event_condition(sys, t, F)
+                    trigger |= cond
+                    discrete_event_cache[i][j] = cond
                 end
             end
         end
+        trigger && return true
         @nexprs $NConn nc -> begin
             @nexprs $Len i -> begin
                 @nexprs $Len k -> begin
@@ -318,27 +322,33 @@ tany(f, coll; kwargs...) = tmapreduce(f, |, coll; kwargs...)
 end
 
 function discrete_affect!(integrator)
-    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
+    (;params_partitioned, state_types_val, connection_matrices, discrete_event_cache) = integrator.p
     state_data = integrator.u.x
     states_partitioned = to_vec_o_states(state_data, state_types_val)
-    _discrete_affect!(integrator, states_partitioned, params_partitioned, connection_matrices, integrator.t)
+    _discrete_affect!(integrator,
+                      states_partitioned,
+                      params_partitioned,
+                      connection_matrices,
+                      discrete_event_cache,
+                      integrator.t)
 end
 
 @generated function _discrete_affect!(integrator,
                                       states_partitioned    ::NTuple{Len, Any},
                                       params_partitioned    ::NTuple{Len, Any},
                                       connection_matrices::ConnectionMatrices{NConn},
+                                      discrete_event_cache  ::NTuple{Len, Any},
                                       t) where {Len, NConn}
     quote
         @nexprs $Len i -> begin
             # First we apply events to the states
             if has_discrete_events(eltype(states_partitioned[i]))
                 @inbounds for j ∈ eachindex(states_partitioned[i])
-                    sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-                    sview = @view states_partitioned[i][j]
-                    pview = @view params_partitioned[i][j]
-                    F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
-                    if discrete_event_condition(sys, t, F)
+                    if discrete_event_cache[i][j]
+                        sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                        sview = @view states_partitioned[i][j]
+                        pview = @view params_partitioned[i][j]
+                        F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                         if discrete_events_require_inputs(sys)
                             input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
                             apply_discrete_event!(integrator, sview, pview, sys, F, input)
@@ -347,6 +357,7 @@ end
                         end
                     end
                 end
+                discrete_event_cache[i] .= false
             end
             # Then we do the connection events
             @nexprs $NConn nc -> begin
@@ -360,7 +371,6 @@ end
         end
     end
 end
-
 
 function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t, 
                                       states_partitioned::NTuple{Len, Any},

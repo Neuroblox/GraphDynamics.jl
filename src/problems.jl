@@ -9,7 +9,7 @@ function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[];
     nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map)
     (; f, u, tspan, p, callback) = nt
     tstops = vcat(tstops, nt.tstops)
-    prob = ODEProblem(f, u, tspan, p; callback, tstops, kwargs...)
+    prob = ODEProblem{true, SciMLBase.FullSpecialize}(f, u, tspan, p; callback, tstops, kwargs...)
     for (k, v) ∈ u0map
         setu(prob, k)(prob, v)
     end
@@ -35,11 +35,12 @@ function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
     prob
 end
 
-Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV}
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV, DEC}
     params_partitioned::PP
     connection_matrices::CM
     scheduler::S
     state_types_val::STV
+    discrete_event_cache::DEC
 end
 
 function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map)
@@ -107,11 +108,20 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
         error(ArgumentError("The provided subsystem states do not have a concrete eltype. All partitions must contain the same eltype. Got `eltype(u) = $(eltype(u))`."))
     end
 
+    discrete_event_cache = ntuple(length(states_partitioned)) do i
+        len = has_discrete_events(eltype(states_partitioned[i])) ? length(states_partitioned[i]) : 0
+        falses(len)
+    end
+
     ce = nce > 0 ? VectorContinuousCallback(continuous_condition, continuous_affect!, nce) : nothing
     de = nde > 0 ? DiscreteCallback(discrete_condition, discrete_affect!) : nothing
     callback = CallbackSet(ce, de, composite_discrete_callbacks(composite_discrete_events_partitioned))
     f = GraphSystemFunction(graph_ode!, g)
-    p = GraphSystemParameters(; params_partitioned, connection_matrices, scheduler, state_types_val)
+    p = GraphSystemParameters(; params_partitioned,
+                              connection_matrices,
+                              scheduler,
+                              state_types_val,
+                              discrete_event_cache)
     (; f, u, tspan, p, callback, tstops)
 end
 
