@@ -98,6 +98,11 @@ using SparseArrays:
     rowvals,
     nzrange
 
+using OrderedCollections:
+    OrderedCollections,
+    OrderedDict
+
+
 #----------------------------------------------------------
 # Random utils
 include("utils.jl")

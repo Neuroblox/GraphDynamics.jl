@@ -16,7 +16,7 @@ struct ParamIndex #todo: this'll require some generalization to support weight p
 end
 
 function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemStates}}})
-    state_namemap = Dict{Symbol, StateIndex}()
+    state_namemap = OrderedDict{Symbol, StateIndex}()
     for i ∈ eachindex(names_partitioned, states_partitioned)
         for j ∈ eachindex(names_partitioned[i], states_partitioned[i])
             for (k, name) ∈ enumerate(propertynames(states_partitioned[i][j]))
@@ -28,7 +28,7 @@ function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{Abs
     state_namemap
 end
 function compute_namemap(names_partitioned, params_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemParams}}})
-    param_namemap = Dict{Symbol, ParamIndex}()
+    param_namemap = OrderedDict{Symbol, ParamIndex}()
     for i ∈ eachindex(names_partitioned, params_partitioned)
         for j ∈ eachindex(names_partitioned[i], params_partitioned[i])
             for name ∈ propertynames(params_partitioned[i][j])
