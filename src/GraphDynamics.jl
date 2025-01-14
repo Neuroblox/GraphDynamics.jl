@@ -165,7 +165,7 @@ end
 """
     must_run_before(::Type{T}, ::Type{U})
 
-Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`. If you add methods to this function, you must not use a parallel scheduler.
+Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`.
 """
 must_run_before(::Type{T}, ::Type{U}) where {T, U} = false
 
