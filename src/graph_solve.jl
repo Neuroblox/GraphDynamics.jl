@@ -75,7 +75,11 @@ function _graph_ode_mapping_f(j, ::Val{i},
                               scheduler,
                               t) where {i, Len, NConn}
     sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-    input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+    input = if subsystem_differential_requires_inputs(sys_dst)
+        calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+    else
+        initialize_input(sys_dst)
+    end
     apply_subsystem_differential!(@view(dstates_partitioned[i][j]), sys_dst, input, t)
 end
 
@@ -86,14 +90,12 @@ function calculate_inputs(::Val{i}, j,
     state  = @inbounds states_partitioned[i][j]
     subsys = @inbounds Subsystem(state, params_partitioned[i][j])
     input  = initialize_input(subsys)
-    if subsystem_differential_requires_inputs(subsys)
-        @unroll 16 for k ∈ 1:Len
-            @unroll 8 for nc ∈ 1:NConn
-                @inbounds begin
-                    M = connection_matrices[nc][k, i]
-                    input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], SerialScheduler();)
-                    input = combine(input, input′)
-                end
+    @unroll 16 for k ∈ 1:Len
+        @unroll 8 for nc ∈ 1:NConn
+            @inbounds begin
+                M = connection_matrices[nc][k, i]
+                input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], SerialScheduler();)
+                input = combine(input, input′)
             end
         end
     end
@@ -467,32 +469,6 @@ struct ForeachConnectedSubsystem{k, Len, NConn, S, P, CMs}
     end
 end
 
-# @generated function ((;l,
-#                       states_partitioned,
-#                       params_partitioned,
-#                       connection_matrices)::ForeachConnectedSubsystem{k, Len, NConn})(f::F) where {k, Len, NConn, F}
-#     quote
-#         @nexprs $Len i -> begin
-#             @nexprs $NConn nc -> begin
-#                 M = connection_matrices[nc][k, i]
-#                 if M isa NotConnected
-#                     nothing
-#                 else
-#                     for j ∈ eachindex(states_partitioned[i])
-#                         @inbounds conn = M[l, j]
-#                         if !iszero(conn)
-#                             @inbounds states_view_dst = @view states_partitioned[i][j]
-#                             @inbounds params_view_dst = @view params_partitioned[i][j]
-#                             sys_dst = Subsystem(states_view_dst[], params_view_dst[])
-#                             f(conn, sys_dst, states_view_dst, params_view_dst)
-#                         end
-#                     end
-#                 end 
-#             end
-#         end
-#     end 
-# end
-
 @generated function Base.mapreduce(f::F, op::Op, FCS::ForeachConnectedSubsystem{k, Len, NConn}; init) where {k, Len, NConn, F, Op}
     quote
         (;l, states_partitioned, params_partitioned, connection_matrices) = FCS
@@ -520,3 +496,5 @@ end
     end
 end
 (FCS::ForeachConnectedSubsystem)(f::F) where {F} = mapreduce(f, (_, _) -> nothing, FCS; init=nothing)
+
+

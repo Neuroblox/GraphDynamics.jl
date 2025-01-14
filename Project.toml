@@ -1,6 +1,6 @@
 name = "GraphDynamics"
 uuid = "bcd5d0fe-e6b7-4ef1-9848-780c183c7f4c"
-version = "0.2.2"
+version = "0.2.3"
 
 [deps]
 Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
