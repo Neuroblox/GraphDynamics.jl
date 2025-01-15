@@ -128,6 +128,8 @@ end
 function ConstructionBase.getproperties(s::Subsystem)
     states = NamedTuple(get_states(s))
     params = NamedTuple(get_params(s))
+    # TODO: should there be observed states in here? I don't want to accidentally waste CPU cycles on them
+    # but it might be necessary? Not sure, since they can't be `setproperty`-d
     merge(states, params)
 end
 function ConstructionBase.setproperties(s::Subsystem{T, Eltype, States, Params}, patch::NamedTuple) where {T, Eltype, States, Params}
@@ -172,10 +174,7 @@ get_states(s::Subsystem) = getfield(s, :states)
 get_params(s::Subsystem) = getfield(s, :params)
 get_tag(::Subsystem{Name}) where {Name} = Name
 
-
-
 get_tag(::Type{<:Subsystem{Name}}) where {Name} = Name
-
 
 function Base.getproperty(s::Subsystem{<:Any, States, Params},
                           prop::Symbol) where {States, Params}
@@ -186,7 +185,12 @@ function Base.getproperty(s::Subsystem{<:Any, States, Params},
     elseif prop ∈ keys(params)
         getproperty(params, prop)
     else
-        subsystem_prop_err(s, prop)
+        comp_props = computed_properies(s)
+        if prop ∈ keys(comp_props)
+            comp_props[prop](s)
+        else
+            subsystem_prop_err(s, prop)
+        end
     end
 end
 @noinline subsystem_prop_err(s::Subsystem{Name}, prop) where {Name} = error(ArgumentError(
