@@ -73,14 +73,17 @@ using SciMLBase:
     VectorContinuousCallback,
     ContinuousCallback,
     DiscreteCallback,
-    remake
+    remake,
+    ODEFunction
 
 using RecursiveArrayTools: ArrayPartition
 
 using SymbolicIndexingInterface:
     SymbolicIndexingInterface,
     setu,
-    setp
+    setp,
+    getp,
+    observed
 
 using Accessors:
     Accessors,
@@ -137,6 +140,31 @@ end
 function get_tag end
 function get_params end
 function get_states end
+
+"""
+   computed_properties(::Subsystem{T}) :: NamedTuple{props, NTuple{N, funcs}}
+
+Signal that a subsystem has properties which can be computed on-the-fly based on it's existing properties. In the termoinology used by ModelingToolkit.jl, these are "observed states".
+
+This function takes in a `Subsystem` and returns a `NamedTuple` where each key is a property name that can be computed, and each value is a function that takes in the subsystem and returns a computed value.
+
+By default, this function returns an empty NamedTuple.
+
+Example:
+
+```julia
+struct Position end
+function GraphDynamics.computed_properties(::Subsystem{Position})
+    (;r = (;x, y) -> √(x^2 + y^2),
+      θ = (;x, y) -> atan(y, x))
+end
+
+let sys = Subsystem{Position}(states=(x=1, y=2), params=(;))
+    sys.r == √(sys.x^2 + sys.y^2)
+end
+```
+"""
+computed_properies(s::Subsystem) = ()
 
 """
      subsystem_differential(subsystem, input, t)
@@ -253,7 +281,7 @@ Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
 
 abstract type GraphSystem end
 
-@kwdef struct ODEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM} <: GraphSystem
+@kwdef struct ODEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM, CNM} <: GraphSystem
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
@@ -261,10 +289,11 @@ abstract type GraphSystem end
     composite_discrete_events_partitioned::CDEP = nothing
     composite_continuous_events_partitioned::CCEP = nothing
     names_partitioned::Ns
-    state_namemap::SNM = compute_namemap(names_partitioned, states_partitioned)
-    param_namemap::PNM = compute_namemap(names_partitioned, params_partitioned)
+    state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
+    param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
+    compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
 end
-@kwdef struct SDEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM} <: GraphSystem
+@kwdef struct SDEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM, CNM} <: GraphSystem
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
@@ -272,8 +301,9 @@ end
     composite_discrete_events_partitioned::CDEP = nothing
     composite_continuous_events_partitioned::CCEP = nothing
     names_partitioned::Ns
-    state_namemap::SNM = compute_namemap(names_partitioned, states_partitioned)
-    param_namemap::PNM = compute_namemap(names_partitioned, params_partitioned)
+    state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
+    param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
+    compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
 end
 
 
@@ -281,17 +311,13 @@ end
 # Infrastructure for subsystems
 include("subsystems.jl")
 
-
-
 #----------------------------------------------------------
 # Problem generating API:
 include("problems.jl")
 
-
 #----------------------------------------------------------
 # Symbolically indexing the solutions of graph systems
 include("symbolic_indexing.jl")
-
 
 #----------------------------------------------------------
 # Solving graph differential equations

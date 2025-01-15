@@ -1,4 +1,4 @@
-using GraphDynamics, OrdinaryDiffEq, Test, ForwardDiff
+using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff
 
 struct Particle end
 function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
@@ -7,6 +7,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
     dv = F/m
     SubsystemStates{Particle}((;x=dx, v=dv))
 end
+
 GraphDynamics.initialize_input(::Subsystem{Particle}) = 0.0
 
 struct Oscillator end
@@ -17,6 +18,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, F, t)
     SubsystemStates{Oscillator}((;x=dx, v=dv))
 end
 GraphDynamics.initialize_input(::Subsystem{Oscillator}) = 0.0
+GraphDynamics.computed_properies(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
 
 struct Spring
     k::Float64
@@ -32,6 +34,13 @@ end
 
 function ((;fac)::Coulomb)(a, b)
     -fac * a.q * b.q * sign(a.x - b.x)/(abs(a.x - b.x) + 1e-10)^2
+end
+
+
+@testset "basic" begin
+    sys = Subsystem{Oscillator}(states=(;x=-2.0, v=1.0), params=(;x₀=0.0, m=30.0, k=1.0, q=1.0))
+    @test sys.x == -2.0
+    @test sys.ω₀ == √(sys.k/sys.m)
 end
 
 
@@ -89,18 +98,22 @@ end
 
 @testset "solutions" begin
     sol = solve_particle_osc(;x1=1.0, x2=-1.0)
-    @test sol[:particle1₊x][end] ≈  0.580617 rtol=1e-3
-    @test sol[:particle2₊x][end] ≈ -1.391576 rtol=1e-3
-    @test sol[:osc₊x][end]       ≈ -1.063306 rtol=1e-3
+    @test sol[:particle1₊x, end] ≈  0.580617 rtol=1e-3
+    @test sol[:particle2₊x, end] ≈ -1.391576 rtol=1e-3
+    @test sol[:osc₊x, end]       ≈ -1.063306 rtol=1e-3
+    k = GraphDynamics.getp(sol, :osc₊k)(sol)
+    m = GraphDynamics.getp(sol, :osc₊m)(sol)
+    @test sol[:osc₊ω₀, end] == √(k/m)
 end
 
 @testset "sensitivies" begin
     jac = ForwardDiff.jacobian([1.0, -1.0]) do (x1, x2)
         sol = solve_particle_osc(;x1, x2)
-        [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
+        [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
     end
     @test jac ≈ [-0.50821   -0.740152
                  -0.199444  -0.906593
                  -0.586021   0.118173] rtol=1e-3
 
 end
+

@@ -15,30 +15,54 @@ struct ParamIndex #todo: this'll require some generalization to support weight p
     prop::Symbol
 end
 
-function compute_namemap(names_partitioned, states_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemStates}}})
-    state_namemap = OrderedDict{Symbol, StateIndex}()
+function make_state_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
+                            states_partitioned::NTuple{N, AbstractVector{<:SubsystemStates}}) where {N}
+    namemap = OrderedDict{Symbol, StateIndex}()
     for i ∈ eachindex(names_partitioned, states_partitioned)
         for j ∈ eachindex(names_partitioned[i], states_partitioned[i])
-            for (k, name) ∈ enumerate(propertynames(states_partitioned[i][j]))
+            states = states_partitioned[i][j]
+            for (k, name) ∈ enumerate(propertynames(states))
                 propname = Symbol(names_partitioned[i][j], "₊", name)
-                state_namemap[propname] = StateIndex(i, j, k)
+                namemap[propname] = StateIndex(i, j, k)
             end
         end
     end
-    state_namemap
+    namemap
 end
-function compute_namemap(names_partitioned, params_partitioned::Tuple{Vararg{AbstractVector{<:SubsystemParams}}})
-    param_namemap = OrderedDict{Symbol, ParamIndex}()
+
+function make_param_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
+                            params_partitioned::NTuple{N, AbstractVector{<:SubsystemParams}}) where {N}
+    namemap = OrderedDict{Symbol, ParamIndex}()
     for i ∈ eachindex(names_partitioned, params_partitioned)
         for j ∈ eachindex(names_partitioned[i], params_partitioned[i])
-            for name ∈ propertynames(params_partitioned[i][j])
+            params = params_partitioned[i][j]
+            for name ∈ propertynames(params)
                 propname = Symbol(names_partitioned[i][j], "₊", name)
                 #TODO: this'll require some generalization to support weight params
-                param_namemap[propname] = ParamIndex(i, j, name)
+                namemap[propname] = ParamIndex(i, j, name)
             end
         end
     end
-    param_namemap
+    namemap
+end
+
+
+function make_compu_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
+                          states_partitioned::NTuple{N, AbstractVector{<:SubsystemStates}},
+                          params_partitioned::NTuple{N, AbstractVector{<:SubsystemParams}}) where {N}
+    namemap = OrderedDict{Symbol, ParamIndex}()
+    for i ∈ eachindex(names_partitioned, states_partitioned, params_partitioned)
+        for j ∈ eachindex(names_partitioned[i], states_partitioned[i], params_partitioned[i])
+            states = states_partitioned[i][j]
+            params = params_partitioned[i][j]
+            sys = Subsystem(states, params)
+            for name ∈ keys(computed_properies(sys))
+                propname = Symbol(names_partitioned[i][j], "₊", name)
+                namemap[propname] = ParamIndex(i, j, name)
+            end
+        end
+    end
+    namemap
 end
 
 
@@ -118,7 +142,20 @@ function SymbolicIndexingInterface.is_time_dependent(sys::GraphSystem)
 end
 
 function SymbolicIndexingInterface.is_observed(sys::GraphSystem, sym)
-    false # TODO: support observed variables
+    haskey(sys.compu_namemap, sym)
+end
+
+function SymbolicIndexingInterface.observed(f::ODEFunction{a, b, F}, sym::Symbol) where {a, b, F<:GraphSystemFunction}
+    observed(f.f.sys, sym)
+end
+function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
+    (; tup_index, v_index, prop) = sys.compu_namemap[sym]
+    function gen(u, p, t)
+        (; params_partitioned, state_types_val) = p
+        states_partitioned = to_vec_o_states(u.x, state_types_val)
+        subsys = Subsystem(states_partitioned[tup_index][v_index], params_partitioned[tup_index][v_index])
+        getproperty(subsys, prop)
+    end
 end
 
 # function SymbolicIndexingInterface.all_solvable_symbols(sys::GraphSystem)
