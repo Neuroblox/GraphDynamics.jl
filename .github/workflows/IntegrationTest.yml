@@ -7,15 +7,13 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.package.repo }}
+    name: Neuroblox ${{ matrix.group }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         julia-version: [1]
         os: [ubuntu-latest]
-        package:
-          - {user: Neuroblox, repo: Neuroblox.jl}
         group:
           - Basics
           - Advanced
