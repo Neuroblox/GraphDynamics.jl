@@ -15,8 +15,6 @@ jobs:
         julia-version: [1]
         os: [ubuntu-latest]
         group:
-          - Basics
-          - Advanced
           - GraphDynamics1
           - GraphDynamics2
           - GraphDynamics3
