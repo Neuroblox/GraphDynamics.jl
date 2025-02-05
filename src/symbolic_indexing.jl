@@ -125,7 +125,7 @@ function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i:
 end
 
 function SymbolicIndexingInterface.parameter_symbols(g::GraphSystem)
-    collect(keys(f.param_namemap))
+    collect(keys(g.param_namemap))
 end
 
 function SymbolicIndexingInterface.is_independent_variable(sys::GraphSystem, sym)
