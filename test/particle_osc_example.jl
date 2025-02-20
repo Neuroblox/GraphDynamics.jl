@@ -5,7 +5,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
     (;x, v, m) = sys
     dx = v
     dv = F/m
-    SubsystemStates{Particle}((;x=dx, v=dv))
+    SubsystemStates{Particle}(x=dx, v=dv)
 end
 
 GraphDynamics.initialize_input(::Subsystem{Particle}) = 0.0
@@ -15,7 +15,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, F, t)
     (;x, v, x₀, m, k) = sys
     dx = v
     dv = (F - k*(x - x₀))/m
-    SubsystemStates{Oscillator}((;x=dx, v=dv))
+    SubsystemStates{Oscillator}(x=dx, v=dv)
 end
 GraphDynamics.initialize_input(::Subsystem{Oscillator}) = 0.0
 GraphDynamics.computed_properies(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
