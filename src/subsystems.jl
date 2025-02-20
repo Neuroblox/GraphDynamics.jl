@@ -3,6 +3,7 @@
 function SubsystemParams{Name}(nt::NT) where {Name, NT <: NamedTuple}
     SubsystemParams{Name, NT}(nt)
 end
+SubsystemParams{Name}(;kwargs...) where {Name} = SubsystemParams{Name}(NamedTuple(kwargs))
 
 function Base.show(io::IO, params::SubsystemParams{Name}) where {Name}
     print(io, "$SubsystemParams{$Name}(", join(("$k = $v" for (k, v) ∈ pairs(NamedTuple(params))), ", "), ")")
@@ -50,6 +51,7 @@ end
 function SubsystemStates{Name}(nt::NamedTuple{(), Tuple{}}) where {Name}
     SubsystemStates{Name, Union{}, NamedTuple{(), Tuple{}}}(nt)
 end
+SubsystemStates{Name}(;kwargs...) where {Name} = SubsystemStates{Name}(NamedTuple(kwargs))
 
 function Base.show(io::IO, states::SubsystemStates{Name, Eltype}) where {Name, Eltype}
     print(io, "$SubsystemStates{$Name, $Eltype}(", join(("$k = $v" for (k, v) ∈ pairs(NamedTuple(states))), ", "), ")")
