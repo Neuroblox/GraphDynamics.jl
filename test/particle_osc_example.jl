@@ -7,6 +7,9 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
     dv = F/m
     SubsystemStates{Particle}(x=dx, v=dv)
 end
+function GraphDynamics.computed_properties_with_inputs(::Subsystem{Particle})
+    (; a = (p, F) -> F/p.m)
+end
 
 GraphDynamics.initialize_input(::Subsystem{Particle}) = 0.0
 
@@ -19,6 +22,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, F, t)
 end
 GraphDynamics.initialize_input(::Subsystem{Oscillator}) = 0.0
 GraphDynamics.computed_properies(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
+
 
 struct Spring
     k::Float64
@@ -86,7 +90,6 @@ function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5())
 
     sys = ODEGraphSystem(;connection_matrices, states_partitioned, params_partitioned, names_partitioned)
 
-    
     prob = ODEProblem(sys,
                       # Fix the garbage state values
                       [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0],
@@ -97,13 +100,21 @@ function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5())
 end
 
 @testset "solutions" begin
-    sol = solve_particle_osc(;x1=1.0, x2=-1.0)
-    @test sol[:particle1₊x, end] ≈  0.580617 rtol=1e-3
-    @test sol[:particle2₊x, end] ≈ -1.391576 rtol=1e-3
-    @test sol[:osc₊x, end]       ≈ -1.063306 rtol=1e-3
+    t = 10.0
+    sol = solve_particle_osc(;x1=1.0, x2=-1.0, tspan=(0.0, t))
+
+    @test sol(t; idxs=:particle1₊x) ≈  0.580617 rtol=1e-3
+    @test sol(t; idxs=:particle2₊x) ≈ -1.391576 rtol=1e-3
+    @test sol(t; idxs=:osc₊x)       ≈ -1.063306 rtol=1e-3
+    
     k = GraphDynamics.getp(sol, :osc₊k)(sol)
     m = GraphDynamics.getp(sol, :osc₊m)(sol)
-    @test sol[:osc₊ω₀, end] == √(k/m)
+    @test sol(t, idxs=:osc₊ω₀) == √(k/m)
+
+    # :particle1₊a is a computed property that depends on inputs (F). It should be equal to
+    # the second derivative of the position (since it's an acceleration)
+    # Note that sol(t, Val{2}) means "second derivative of sol at t" (using the interpolation).
+    @test sol(t; idxs=:particle1₊a) ≈ sol(t, Val{2}; idxs=:particle1₊x) rtol=1e-5
 end
 
 @testset "sensitivies" begin
