@@ -76,7 +76,7 @@ function _graph_ode_mapping_f(j, ::Val{i},
                               t) where {i, Len, NConn}
     sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
     input = if subsystem_differential_requires_inputs(sys_dst)
-        calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+        calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
     else
         initialize_input(sys_dst)
     end
@@ -86,7 +86,9 @@ end
 function calculate_inputs(::Val{i}, j,
                           states_partitioned::NTuple{Len, Any},
                           params_partitioned::NTuple{Len, Any},
-                          connection_matrices::ConnectionMatrices{NConn})  where {i, Len, NConn}
+                          connection_matrices::ConnectionMatrices{NConn},
+                          #TODO: remove the =nothing fallback
+                          t=nothing)  where {i, Len, NConn}
     state  = @inbounds states_partitioned[i][j]
     subsys = @inbounds Subsystem(state, params_partitioned[i][j])
     input  = initialize_input(subsys)
@@ -94,7 +96,7 @@ function calculate_inputs(::Val{i}, j,
         @unroll 8 for nc ∈ 1:NConn
             @inbounds begin
                 M = connection_matrices[nc][k, i]
-                input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], SerialScheduler();)
+                input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], t, SerialScheduler();)
                 input = combine(input, input′)
             end
         end
@@ -124,24 +126,24 @@ e.g. if the inputs are just numbers who are combined by adding them together, th
 """
 function combine_inputs end
 
-function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, ::SerialScheduler;
+function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, t, ::SerialScheduler;
                             init=initialize_input(subsys))
     acc = init
     if M isa SparseMatrixCSC
         @inbounds for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-            acc′ = Mlj(Subsystem(states_partitioned[l], params_partitioned[l]), subsys) # Now do the actual reducing step just like the above method
+            acc′ = Mlj(Subsystem(states_partitioned[l], params_partitioned[l]), subsys, t) # Now do the actual reducing step just like the above method
             acc = combine(acc, acc′)
         end
     else
         @inbounds @simd for l ∈ axes(M, 1)
-            acc′ = M[l,j](Subsystem(states_partitioned[l], params_partitioned[l]), subsys) # Now do the actual reducing step just like the above method
+            acc′ = M[l,j](Subsystem(states_partitioned[l], params_partitioned[l]), subsys, t) # Now do the actual reducing step just like the above method
             acc = combine(acc, acc′)
         end
     end
     acc
 end
 
-@inline combine_inputs(subsys, M::NotConnected, j, states_partitioned, params_partitioned, scheduler::SerialScheduler;
+@inline combine_inputs(subsys, M::NotConnected, j, states_partitioned, params_partitioned, t, scheduler::SerialScheduler;
                        init=initialize_input(subsys)) = init
 
 """
@@ -252,6 +254,7 @@ function _continuous_affect!(integrator,
                              connection_matrices::ConnectionMatrices{NConn},
                              idx) where {Len, NConn}
     offset=0
+    t = integrator.t
     for i ∈ 1:Len
         @inbounds begin
             if has_continuous_events(eltype(states_partitioned[i]))
@@ -264,7 +267,7 @@ function _continuous_affect!(integrator,
                     sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
                     F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                     if continuous_events_require_inputs(sys)
-                        input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+                        input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
                         apply_continuous_event!(integrator, sview, pview, sys, F, input)
                     else
                         apply_continuous_event!(integrator, sview, pview, sys, F)
@@ -352,7 +355,7 @@ end
                         pview = @view params_partitioned[i][j]
                         F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                         if discrete_events_require_inputs(sys)
-                            input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices)
+                            input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
                             apply_discrete_event!(integrator, sview, pview, sys, F, input)
                         else
                             apply_discrete_event!(integrator, sview, pview, sys, F)
@@ -394,11 +397,13 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
                         input_dst = calculate_inputs(Val(i), j,
                                                      states_partitioned,
                                                      params_partitioned,
-                                                     connection_matrices)
+                                                     connection_matrices,
+                                                     t)
                         input_src = calculate_inputs(Val(k), l,
                                                      states_partitioned,
                                                      params_partitioned,
-                                                     connection_matrices)
+                                                     connection_matrices,
+                                                     t)
                         apply_discrete_event!(integrator,
                                               sview_src, pview_src,
                                               sview_dst, pview_dst,

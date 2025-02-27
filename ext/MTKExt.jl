@@ -21,7 +21,7 @@ function SymbolicIndexingInterface.parameter_index(sys::GraphSystem, var::Num)
     SymbolicIndexingInterface.parameter_index(sys, tosymbol(var; escape=false))
 end
 
-function SymbolicIndexingInterface.is_independent_variable(sys::GraphSystem, sym::Num)
+function SymbolicIndexingInterface.is_independent_variable(sys::GraphSystem, var::Num)
     SymbolicIndexingInterface.is_independent_variable(sys, tosymbol(var; escape=false))
 end
 

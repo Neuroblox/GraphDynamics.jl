@@ -43,7 +43,7 @@ And now lets define two different types of 'connections' through which these sub
 + `Coulomb` which descrbies two objects repelling eachother by a 1/r^2 law (with a cutoff around r=0 to stop the system from blowing up).
 
 ``` julia
-struct Spring
+struct Spring <: ConnectionRule
     k::Float64
 end
 
@@ -51,7 +51,7 @@ function ((;k)::Spring)(a, b)
     k * (a.x - b.x)
 end
 
-struct Coulomb
+struct Coulomb <: ConnectionRule
     fac::Float64
 end
 

@@ -53,7 +53,8 @@ export
     SDEProblem,
     ConnectionMatrices,
     ConnectionMatrix,
-    NotConnected
+    NotConnected,
+    ConnectionRule
 
 
 #----------------------------------------------------------
@@ -77,7 +78,8 @@ using SciMLBase:
     ContinuousCallback,
     DiscreteCallback,
     remake,
-    ODEFunction
+    ODEFunction,
+    SDEFunction
 
 using RecursiveArrayTools: ArrayPartition
 
@@ -281,7 +283,9 @@ add methods to this function if a subsystem or connection type has a discrete ev
 event_times(::Any) = ()
 
 abstract type ConnectionRule end
+(c::ConnectionRule)(src, dst, t) = c(src, dst)
 Base.zero(::T) where {T <: ConnectionRule} = zero(T)
+
 struct NotConnected <: ConnectionRule end
 (::NotConnected)(l, r) = zero(promote_type(eltype(l), eltype(r)))
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected, AbstractMatrix{CR}}}}}
