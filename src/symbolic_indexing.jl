@@ -156,6 +156,9 @@ end
 function SymbolicIndexingInterface.observed(f::ODEFunction{a, b, F}, sym::Symbol) where {a, b, F<:GraphSystemFunction}
     observed(f.f.sys, sym)
 end
+function SymbolicIndexingInterface.observed(f::SDEFunction{a, b, F}, sym::Symbol) where {a, b, F<:GraphSystemFunction}
+    observed(f.f.sys, sym)
+end
 
 function SymbolicIndexingInterface.is_observed(sys::GraphSystem, sym)
     haskey(sys.compu_namemap, sym)
@@ -174,7 +177,7 @@ function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
             states_partitioned = to_vec_o_states(u.x, state_types_val)
             i = valueof(val_tup_index)
             subsys = Subsystem(states_partitioned[i][v_index], params_partitioned[i][v_index])
-            input = calculate_inputs(val_tup_index, v_index, states_partitioned, params_partitioned, connection_matrices)
+            input = calculate_inputs(val_tup_index, v_index, states_partitioned, params_partitioned, connection_matrices, t)
 
             comp_props = computed_properties_with_inputs(subsys)
             comp_props[prop](subsys, input)
