@@ -53,7 +53,8 @@ export
     SDEProblem,
     ConnectionMatrices,
     ConnectionMatrix,
-    NotConnected
+    NotConnected,
+    ConnectionRule
 
 
 #----------------------------------------------------------

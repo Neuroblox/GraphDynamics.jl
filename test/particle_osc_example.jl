@@ -1,6 +1,6 @@
 using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff
 
-struct Particle end
+struct Particle  end
 function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, F, t)
     (;x, v, m) = sys
     dx = v
@@ -24,7 +24,7 @@ GraphDynamics.initialize_input(::Subsystem{Oscillator}) = 0.0
 GraphDynamics.computed_properies(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
 
 
-struct Spring
+struct Spring <: ConnectionRule
     k::Float64
 end
 
@@ -32,7 +32,7 @@ function ((;k)::Spring)(a, b)
     k * (a.x - b.x)
 end
 
-struct Coulomb
+struct Coulomb <: ConnectionRule
     fac::Float64
 end
 
