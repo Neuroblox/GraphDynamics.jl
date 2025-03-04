@@ -187,7 +187,7 @@ function Base.getproperty(s::Subsystem{<:Any, States, Params},
     elseif prop ∈ keys(params)
         getproperty(params, prop)
     else
-        comp_props = computed_properies(s)
+        comp_props = computed_properties(s)
         if prop ∈ keys(comp_props)
             comp_props[prop](s)
         else

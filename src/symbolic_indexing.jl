@@ -62,7 +62,7 @@ function make_compu_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
             states = states_partitioned[i][j]
             params = params_partitioned[i][j]
             sys = Subsystem(states, params)
-            for name ∈ keys(computed_properies(sys))
+            for name ∈ keys(computed_properties(sys))
                 requires_inputs = false
                 propname = Symbol(names_partitioned[i][j], "₊", name)
                 namemap[propname] = CompuIndex(i, j, name, requires_inputs)
