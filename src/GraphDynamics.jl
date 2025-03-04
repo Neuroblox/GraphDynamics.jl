@@ -169,7 +169,13 @@ let sys = Subsystem{Position}(states=(x=1, y=2), params=(;))
 end
 ```
 """
-computed_properies(s::Subsystem) = (;)
+computed_properties(s::Subsystem) = (;)
+
+# TODO: delete this in the next breaking release.
+# Accidentally released this with computed_properies
+# as the name to use
+const computed_properies = computed_properties
+
 
 """
     computed_properties_with_inputs(s::Subsystem)

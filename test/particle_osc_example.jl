@@ -21,7 +21,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, F, t)
     SubsystemStates{Oscillator}(x=dx, v=dv)
 end
 GraphDynamics.initialize_input(::Subsystem{Oscillator}) = 0.0
-GraphDynamics.computed_properies(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
+GraphDynamics.computed_properties(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
 
 
 struct Spring <: ConnectionRule
