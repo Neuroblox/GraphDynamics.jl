@@ -35,7 +35,7 @@ end
     event_times,
     ForeachConnectedSubsystem,
 
-    computed_properies,
+    computed_properties,
     computed_properties_with_inputs
 )
 
