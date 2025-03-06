@@ -275,24 +275,38 @@ function Base.getindex(v::SubsystemStatesView{States}) where {States <: Subsyste
 end
 @propagate_inbounds function Base.getindex(v::SubsystemStatesView{States}, s::Symbol) where {States <: SubsystemStates}
     i = state_ind(States, s)
+    idx = v.idx
     if isnothing(i)
         sym_not_found_error(States, s)
     end
-    @inbounds v.data[i, v.idx]
+    @boundscheck checkbounds(v.data, i, idx)
+    @inbounds v.data[i, idx]
 end
 
 @propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, state::States) where {States <: SubsystemStates}
     l = length(States)
     idx = v.idx
-    @inbounds v.data[1:l, idx] .= Tuple(state)
+    @boundscheck checkbounds(v.data, 1:l, idx)
+    tup = Tuple(state)
+    @inbounds begin
+        @simd for i ∈ 1:l
+            v.data[i, idx] = tup[i]
+        end
+    end
     v
+end
+
+function Base.setindex!(v::SubsystemStatesView{States1}, state::States2) where {States1 <: SubsystemStates, States2 <: SubsystemStates}
+    error("Tried to insert a $States2 into a vector of $States1, these types must match exactly in order to be valid. This error might occur when `subsystem_differential` or similar functions return a SubsystemStates whose fields don't match the input states.")
 end
 
 @propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, val, s::Symbol) where {States <: SubsystemStates}
     i = state_ind(States, s)
+    idx = v.idx
     if isnothing(i)
         sym_not_found_error(States, s)
     end
+    @boundscheck checkbounds(v.data, i, idx)
     @inbounds v.data[i, v.idx] = val
     v
 end
