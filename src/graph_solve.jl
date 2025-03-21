@@ -188,22 +188,23 @@ end
 #TODO: We currently only support diagonal noise (that is, the noise source in one
 # equation can't depend on the noise source from another equation). This needs to be
 # generalized, but how to handle it best will require a lot of thought.
-function _graph_noise!(dstates_partitioned#=mutated=#,
+@generated function _graph_noise!(dstates_partitioned#=mutated=#,
                                   states_partitioned ::NTuple{Len, Any},
                                   params_partitioned ::NTuple{Len, Any},
                                   connection_matrices::ConnectionMatrices{NConn},
                                   t) where {Len, NConn}
-
-    idx = 1
-    for i ∈ 1:Len
-        begin
-            l  = @inbounds length(states_partitioned[i][1])
-            js = @inbounds eachindex(states_partitioned[i])
-            @unroll 32 for j ∈ js
-                @inbounds begin
-                    sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-                    apply_subsystem_noise!(@view(dstates_partitioned[i].data[:, j]), sys, t)
-                    idx += l
+    quote
+        idx = 1
+        @nexprs $Len i -> begin
+            begin
+                l  = @inbounds length(states_partitioned[i][1])
+                js = @inbounds eachindex(states_partitioned[i])
+                for j ∈ js
+                    @inbounds begin
+                        sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                        apply_subsystem_noise!(@view(dstates_partitioned[i].data[:, j]), sys, t)
+                        idx += l
+                    end
                 end
             end
         end
