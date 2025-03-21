@@ -199,7 +199,7 @@ end
             begin
                 l  = @inbounds length(states_partitioned[i][1])
                 js = @inbounds eachindex(states_partitioned[i])
-                @nexprs $Len j -> begin
+                for j ∈ js
                     @inbounds begin
                         sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
                         apply_subsystem_noise!(@view(dstates_partitioned[i].data[:, j]), sys, t)
