@@ -35,7 +35,7 @@ jobs:
         env:
           JULIA_NUM_THREADS: 4
           GROUP: ${{ matrix.group }}
-        shell: julia --project=downstream {0}
+        shell: julia --project=downstream {0} -O1
         run: |
           using Pkg
           try
