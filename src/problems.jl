@@ -35,12 +35,13 @@ function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
     prob
 end
 
-Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV, DEC}
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV, DEC, EP<:NamedTuple}
     params_partitioned::PP
     connection_matrices::CM
     scheduler::S
     state_types_val::STV
     discrete_event_cache::DEC
+    extra_params::EP=(;)
 end
 
 function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map)
