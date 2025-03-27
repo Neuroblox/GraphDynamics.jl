@@ -83,27 +83,6 @@ function _graph_ode_mapping_f(j, ::Val{i},
     apply_subsystem_differential!(@view(dstates_partitioned[i][j]), sys_dst, input, t)
 end
 
-function calculate_inputs(::Val{i}, j,
-                          states_partitioned::NTuple{Len, Any},
-                          params_partitioned::NTuple{Len, Any},
-                          connection_matrices::ConnectionMatrices{NConn},
-                          #TODO: remove the =nothing fallback
-                          t=nothing)  where {i, Len, NConn}
-    state  = @inbounds states_partitioned[i][j]
-    subsys = @inbounds Subsystem(state, params_partitioned[i][j])
-    input  = initialize_input(subsys)
-    @unroll 16 for k ∈ 1:Len
-        @unroll 8 for nc ∈ 1:NConn
-            @inbounds begin
-                M = connection_matrices[nc][k, i]
-                input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], t, SerialScheduler();)
-                input = combine(input, input′)
-            end
-        end
-    end
-    input
-end
-
 """
     combine_inputs(subsys::Subsystem,
                    M::AbstractMatrix{<:ConnectionRule},
@@ -126,7 +105,30 @@ e.g. if the inputs are just numbers who are combined by adding them together, th
 """
 function combine_inputs end
 
-function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, t, ::SerialScheduler;
+@generated function calculate_inputs(::Val{i}, j,
+                                     states_partitioned::NTuple{Len, Any},
+                                     params_partitioned::NTuple{Len, Any},
+                                     connection_matrices::ConnectionMatrices{NConn},
+                                     #TODO: remove the =nothing fallback
+                                     t=nothing)  where {i, Len, NConn}
+    quote
+        state  = @inbounds states_partitioned[i][j]
+        subsys = @inbounds Subsystem(state, params_partitioned[i][j])
+        input  = initialize_input(subsys)
+        @nexprs $Len k -> begin
+            @nexprs $NConn nc -> begin
+                @inbounds begin
+                    M = connection_matrices[nc][k, i]
+                    input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], t, SerialScheduler();)
+                    input = combine(input, input′)
+                end
+            end
+        end
+        input
+    end
+end
+
+@noinline function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, t, ::SerialScheduler;
                             init=initialize_input(subsys))
     acc = init
     if M isa SparseMatrixCSC

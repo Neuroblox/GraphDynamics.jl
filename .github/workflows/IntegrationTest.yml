@@ -35,14 +35,14 @@ jobs:
         env:
           JULIA_NUM_THREADS: 4
           GROUP: ${{ matrix.group }}
-        shell: julia --project=downstream {0}
+        shell: julia --project=downstream {0} -O1
         run: |
           using Pkg
           try
             # force it to use this PR's version of the package
             Pkg.develop(PackageSpec(path="."))  # resolver may fail with main deps
             Pkg.update()
-            Pkg.test()  # resolver may fail with test time deps 
+            Pkg.test(julia_args=["-O1"])  # resolver may fail with test time deps 
           catch err
             err isa Pkg.Resolve.ResolverError || rethrow()
             # If we can't resolve that means this is incompatible by SemVer and this is fine

@@ -307,7 +307,7 @@ Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
 
 abstract type GraphSystem end
 
-@kwdef struct ODEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM, CNM} <: GraphSystem
+@kwdef struct ODEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, EP, SNM, PNM, CNM} <: GraphSystem
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
@@ -315,11 +315,12 @@ abstract type GraphSystem end
     composite_discrete_events_partitioned::CDEP = nothing
     composite_continuous_events_partitioned::CCEP = nothing
     names_partitioned::Ns
+    extra_params::EP = (;)
     state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
     param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
     compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
 end
-@kwdef struct SDEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, SNM, PNM, CNM} <: GraphSystem
+@kwdef struct SDEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, Ns, EP, SNM, PNM, CNM} <: GraphSystem
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
@@ -327,6 +328,7 @@ end
     composite_discrete_events_partitioned::CDEP = nothing
     composite_continuous_events_partitioned::CCEP = nothing
     names_partitioned::Ns
+    extra_params::EP = (;)
     state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
     param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
     compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)

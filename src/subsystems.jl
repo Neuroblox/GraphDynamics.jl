@@ -17,10 +17,13 @@ function ConstructionBase.setproperties(s::SubsystemParams{T}, patch::NamedTuple
     props = NamedTuple(s)
     props′ = merge(props, patch)
     if typeof(props) != typeof(props′)
-        error("Type unstable change to subsystem params!")
+        param_setproperror(props, props′)
     end
     SubsystemParams{T}(props′)
 end
+@noinline function param_setproperror(props, props′)
+    error("Type unstable change to subsystem params! Expected properties of type\n  $(typeof(props))\nbut got\n  $(typeof(props′))")
+end 
 
 get_tag(::SubsystemParams{Name}) where {Name} = Name
 get_tag(::Type{<:SubsystemParams{Name}}) where {Name} = Name
@@ -297,8 +300,10 @@ end
 end
 
 function Base.setindex!(v::SubsystemStatesView{States1}, state::States2) where {States1 <: SubsystemStates, States2 <: SubsystemStates}
-    error("Tried to insert a $States2 into a vector of $States1, these types must match exactly in order to be valid. This error might occur when `subsystem_differential` or similar functions return a SubsystemStates whose fields don't match the input states.")
+    state′ = convert(States1, state)
+    setindex!(v, state′)
 end
+
 
 @propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, val, s::Symbol) where {States <: SubsystemStates}
     i = state_ind(States, s)
