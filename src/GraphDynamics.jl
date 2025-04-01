@@ -300,8 +300,9 @@ end
 struct ConnectionMatrices{NConn, Tup <: NTuple{NConn, ConnectionMatrix}}
     matrices::Tup
 end
-Base.getindex(m::ConnectionMatrix, i, j) = m.data[i][j]
-Base.getindex(m::ConnectionMatrices, i) = m.matrices[i]
+@inline Base.getindex(m::ConnectionMatrix, i, j) = m.data[i][j]
+Base.getindex(m::ConnectionMatrix, ::Val{i}, ::Val{j}) where {i, j} = m.data[i][j]
+@inline Base.getindex(m::ConnectionMatrices, i) = m.matrices[i]
 Base.length(m::ConnectionMatrices) = length(m.matrices)
 Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
 
