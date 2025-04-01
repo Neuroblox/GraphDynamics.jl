@@ -329,7 +329,7 @@ end
     tstops::EVT = Float64[]
     composite_discrete_events_partitioned::CDEP = nothing
     composite_continuous_events_partitioned::CCEP = nothing
-    global_events::GE = nothing
+    global_events::GE = (;)
     names_partitioned::Ns
     extra_params::EP = (;)
     state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
