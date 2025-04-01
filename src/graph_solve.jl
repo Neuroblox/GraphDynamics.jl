@@ -118,7 +118,7 @@ function combine_inputs end
         @nexprs $Len k -> begin
             @nexprs $NConn nc -> begin
                 @inbounds begin
-                    M = connection_matrices[nc][k, i]
+                    M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
                     input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], t, SerialScheduler();)
                     input = combine(input, input′)
                 end
@@ -314,7 +314,7 @@ end
         @nexprs $NConn nc -> begin
             @nexprs $Len i -> begin
                 @nexprs $Len k -> begin
-                    M = connection_matrices[nc][k, i]
+                    M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
                     if has_discrete_events(eltype(M))
                         for j ∈ eachindex(states_partitioned[i])
                             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
@@ -483,7 +483,7 @@ end
         state = init
         @nexprs $Len i -> begin
             @nexprs $NConn nc -> begin
-                M = connection_matrices[nc][k, i]
+                M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
                 if M isa NotConnected
                     nothing
                 else

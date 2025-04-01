@@ -50,7 +50,8 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
      connection_matrices,
      tstops,
      composite_discrete_events_partitioned,
-     composite_continuous_events_partitioned,) = g
+     composite_continuous_events_partitioned,
+     global_events) = g
 
     total_eltype = let
         states_eltype = mapreduce(promote_type, states_partitioned) do v
@@ -116,7 +117,7 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
 
     ce = nce > 0 ? VectorContinuousCallback(continuous_condition, continuous_affect!, nce) : nothing
     de = nde > 0 ? DiscreteCallback(discrete_condition, discrete_affect!) : nothing
-    callback = CallbackSet(ce, de, composite_discrete_callbacks(composite_discrete_events_partitioned))
+    callback = CallbackSet(ce, de, composite_discrete_callbacks(composite_discrete_events_partitioned), global_events...)
     f = GraphSystemFunction(graph_ode!, g)
     p = GraphSystemParameters(; params_partitioned,
                               connection_matrices,
