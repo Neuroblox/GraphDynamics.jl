@@ -81,8 +81,6 @@ using SciMLBase:
     ODEFunction,
     SDEFunction
 
-using RecursiveArrayTools: ArrayPartition
-
 using SymbolicIndexingInterface:
     SymbolicIndexingInterface,
     setu,

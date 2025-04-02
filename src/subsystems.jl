@@ -206,10 +206,12 @@ Base.eltype(::Subsystem{<:Any, T}) where {T} = T
 Base.eltype(::Type{<:Subsystem{<:Any, T}}) where {T} = T
 
 #-------------------------------------------------------------------------
-
-@generated function to_vec_o_states(state_data::NTuple{Len, Any}, ::Val{StateTypes}) where {Len, StateTypes}
-    state_types = StateTypes.parameters
-    Expr(:tuple, (:(VectorOfSubsystemStates{$(state_types[i])}(state_data[$i])) for i ∈ 1:Len)...)
+_deval(::Val{T}) where {T} = T
+function partitioned(v, partition_plan::NTuple{N, Any}) where {N}
+    map(partition_plan) do (;inds, sz, TVal)
+        M = reshape(view(v, inds), sz...)
+        VectorOfSubsystemStates{_deval(TVal)}(M)
+    end
 end
 
 struct VectorOfSubsystemStates{States, Mat <: AbstractMatrix} <: AbstractVector{States}

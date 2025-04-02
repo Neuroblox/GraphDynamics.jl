@@ -5,9 +5,7 @@ end
 (f::GraphSystemFunction{F})(args...; kwargs...) where {F} = f.f(args...; kwargs...)
 
 struct StateIndex
-    tup_index::Int
-    v_index::Int
-    state_index::Int
+    idx::Int
 end
 struct ParamIndex #todo: this'll require some generalization to support weight params
     tup_index::Int
@@ -24,12 +22,14 @@ end
 function make_state_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
                             states_partitioned::NTuple{N, AbstractVector{<:SubsystemStates}}) where {N}
     namemap = OrderedDict{Symbol, StateIndex}()
+    idx = 1
     for i ∈ eachindex(names_partitioned, states_partitioned)
         for j ∈ eachindex(names_partitioned[i], states_partitioned[i])
             states = states_partitioned[i][j]
             for (k, name) ∈ enumerate(propertynames(states))
                 propname = Symbol(names_partitioned[i][j], "₊", name)
-                namemap[propname] = StateIndex(i, j, k)
+                namemap[propname] = StateIndex(idx)#StateIndex(i, j, k)
+                idx += 1
             end
         end
     end
@@ -78,18 +78,11 @@ function make_compu_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
 end
 
 
-function Base.getindex(u::ArrayPartition, idx::StateIndex)
-    u.x[idx]
+function Base.getindex(u::AbstractArray, idx::StateIndex)
+    u[idx.idx]
 end
-function Base.getindex(u::Tuple, (;tup_index, v_index, state_index)::StateIndex)
-    u[tup_index][state_index, v_index]
-end
-
-function Base.setindex!(u::ArrayPartition, val, idx::StateIndex)
-    setindex!(u.x, val, idx)
-end
-function Base.setindex!(u::Tuple, val, (;tup_index, v_index, state_index)::StateIndex)
-    setindex!(u[tup_index], val, state_index, v_index)
+function Base.setindex!(u::AbstractArray, val, idx::StateIndex)
+    setindex!(u, val, idx.idx)
 end
 
 function Base.getindex(u::GraphSystemParameters, p::ParamIndex)
@@ -173,8 +166,8 @@ function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
     
     if requires_inputs
         function (u, p, t)
-            (; params_partitioned, state_types_val, connection_matrices) = p
-            states_partitioned = to_vec_o_states(u.x, state_types_val)
+            (; params_partitioned, partition_plan, connection_matrices) = p
+            states_partitioned = partitioned(u, partition_plan)
             i = valueof(val_tup_index)
             subsys = Subsystem(states_partitioned[i][v_index], params_partitioned[i][v_index])
             input = calculate_inputs(val_tup_index, v_index, states_partitioned, params_partitioned, connection_matrices, t)
@@ -184,8 +177,8 @@ function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
         end
     else
         function (u, p, t)
-            (; params_partitioned, state_types_val) = p
-            states_partitioned = to_vec_o_states(u.x, state_types_val)
+            (; params_partitioned, partition_plan) = p
+            states_partitioned = partitioned(u, partition_plan)
             i = valueof(val_tup_index)
             subsys = Subsystem(states_partitioned[i][v_index], params_partitioned[i][v_index])
             getproperty(subsys, prop)

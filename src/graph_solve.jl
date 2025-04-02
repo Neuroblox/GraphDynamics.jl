@@ -1,10 +1,10 @@
 #----------------------------------------------------------
-function graph_ode!(du::ArrayPartition,
-                    u::ArrayPartition,
-                    (;params_partitioned, connection_matrices, scheduler, state_types_val)::P,
-                    t) where {P}
-    states_partitioned  = to_vec_o_states( u.x, state_types_val)
-    dstates_partitioned = to_vec_o_states(du.x, state_types_val)
+function graph_ode!(du,
+                              u,
+                              (;params_partitioned, connection_matrices, scheduler, partition_plan)::P,
+                              t) where {P}
+    states_partitioned  = partitioned( u, partition_plan)
+    dstates_partitioned = partitioned(du, partition_plan)
     _graph_ode!(dstates_partitioned, states_partitioned, params_partitioned, connection_matrices, scheduler, t)
 end
 
@@ -175,11 +175,11 @@ end
 #----------------------------------------------------------
 
 function graph_noise!(du,
-                      u::ArrayPartition,
-                      (;params_partitioned, connection_matrices, scheduler, state_types_val)::P,
+                      u,
+                      (;params_partitioned, connection_matrices, scheduler, partition_plan)::P,
                       t) where {P}
-    states_partitioned  = to_vec_o_states( u.x, state_types_val)
-    dstates_partitioned = to_vec_o_states(du.x, state_types_val)
+    states_partitioned  = partitioned( u, partition_plan)
+    dstates_partitioned = partitioned(du, partition_plan)
     _graph_noise!(dstates_partitioned, states_partitioned, params_partitioned, connection_matrices, t)
 end
 
@@ -190,7 +190,7 @@ end
 #TODO: We currently only support diagonal noise (that is, the noise source in one
 # equation can't depend on the noise source from another equation). This needs to be
 # generalized, but how to handle it best will require a lot of thought.
-@generated function _graph_noise!(dstates_partitioned#=mutated=#,
+@generated function _graph_noise!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
                                   states_partitioned ::NTuple{Len, Any},
                                   params_partitioned ::NTuple{Len, Any},
                                   connection_matrices::ConnectionMatrices{NConn},
@@ -219,8 +219,8 @@ end
 #----------------------------------------------------------
 
 function continuous_condition(out, u, t, integrator)
-    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
-    states_partitioned = to_vec_o_states(u.x, state_types_val)
+    (;params_partitioned, partition_plan, connection_matrices) = integrator.p
+    states_partitioned = partitioned(u, partition_plan)
     _continuous_condition!(out, states_partitioned, params_partitioned, connection_matrices, t)
 end
 
@@ -245,9 +245,9 @@ end
 
 
 function continuous_affect!(integrator, idx)
-    (;params_partitioned, state_types_val, connection_matrices) = integrator.p
-    state_data = integrator.u.x
-    states_partitioned = to_vec_o_states(state_data, state_types_val)
+    (;params_partitioned, partition_plan, connection_matrices) = integrator.p
+    state_data = integrator.u
+    states_partitioned = partitioned(state_data, partition_plan)
     _continuous_affect!(integrator, states_partitioned, params_partitioned, connection_matrices, idx)
 end
 
@@ -287,8 +287,8 @@ end
 #----------------------------------------------------------
 
 function discrete_condition(u, t, integrator)
-    (;params_partitioned, state_types_val, connection_matrices, discrete_event_cache) = integrator.p
-    states_partitioned = to_vec_o_states(u.x, state_types_val)
+    (;params_partitioned, partition_plan, connection_matrices, discrete_event_cache) = integrator.p
+    states_partitioned = partitioned(u, partition_plan)
     _discrete_condition!(states_partitioned, params_partitioned, t, connection_matrices, discrete_event_cache)
 end
 
@@ -330,9 +330,9 @@ end
 end
 
 function discrete_affect!(integrator)
-    (;params_partitioned, state_types_val, connection_matrices, discrete_event_cache) = integrator.p
-    state_data = integrator.u.x
-    states_partitioned = to_vec_o_states(state_data, state_types_val)
+    (;params_partitioned, partition_plan, connection_matrices, discrete_event_cache) = integrator.p
+    state_data = integrator.u
+    states_partitioned = partitioned(state_data, partition_plan)
     _discrete_affect!(integrator,
                       states_partitioned,
                       params_partitioned,
