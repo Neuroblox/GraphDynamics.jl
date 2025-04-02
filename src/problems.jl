@@ -35,11 +35,11 @@ function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
     prob
 end
 
-Base.@kwdef struct GraphSystemParameters{PP, CM, S, STV, DEC, EP<:NamedTuple}
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, EP<:NamedTuple}
     params_partitioned::PP
     connection_matrices::CM
     scheduler::S
-    state_types_val::STV
+    partition_plan::PAP
     discrete_event_cache::DEC
     extra_params::EP=(;)
 end
@@ -103,9 +103,16 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
             0
         end
     end
-    state_types_val = Val(Tuple{map(eltype, states_partitioned)...})
-    
-    u = ArrayPartition(map(v -> stack(v), states_partitioned))
+    offset = 0
+    partition_plan = map(states_partitioned) do v
+        sz = (length(eltype(v)), length(v))
+        L = prod(sz)
+        inds = (1:L) .+ offset
+        plan = (;inds, sz, TVal=Val(eltype(v)))
+        offset += L
+        plan
+    end
+    u = reduce(vcat, map(v -> reduce(vcat, v), states_partitioned))
     if !allow_nonconcrete && !isconcretetype(eltype(u)) && !all(isconcretetype ∘ eltype, states_partitioned)
         error(ArgumentError("The provided subsystem states do not have a concrete eltype. All partitions must contain the same eltype. Got `eltype(u) = $(eltype(u))`."))
     end
@@ -122,7 +129,7 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
     p = GraphSystemParameters(; params_partitioned,
                               connection_matrices,
                               scheduler,
-                              state_types_val,
+                              partition_plan,
                               discrete_event_cache)
     (; f, u, tspan, p, callback, tstops)
 end
@@ -130,8 +137,8 @@ end
 composite_discrete_callbacks(::Nothing) = nothing
 function composite_discrete_callbacks(composite_discrete_events_partitioned::NTuple{Len, Any}) where {Len}
     function composite_event_conditions(u, t, integrator)
-        (;params_partitioned, state_types_val, connection_matrices) = integrator.p
-        states_partitioned = to_vec_o_states(u.x, state_types_val)
+        (;params_partitioned, partition_plan, connection_matrices) = integrator.p
+        states_partitioned = partitioned(u, partition_plan)
         for i ∈ 1:Len
             for j ∈ eachindex(composite_discrete_events_partitioned[i])
                 ev = composite_discrete_events_partitioned[i][j]
@@ -146,8 +153,8 @@ function composite_discrete_callbacks(composite_discrete_events_partitioned::NTu
         false
     end
     function composite_event_affect!(integrator)
-        (;params_partitioned, state_types_val, connection_matrices) = integrator.p
-        states_partitioned = to_vec_o_states(integrator.u.x, state_types_val)
+        (;params_partitioned, partition_plan, connection_matrices) = integrator.p
+        states_partitioned = partitioned(integrator.u, partition_plan)
         (;t) = integrator
         for i ∈ 1:Len
             for j ∈ eachindex(composite_discrete_events_partitioned[i])
