@@ -28,15 +28,16 @@ end
     apply_discrete_event!,
     discrete_events_require_inputs,
 
-    must_run_before,
-
     isstochastic,
 
     event_times,
     ForeachConnectedSubsystem,
 
     computed_properties,
-    computed_properties_with_inputs
+    computed_properties_with_inputs,
+
+    system_wiring_rule!,
+    to_subsystem,
 )
 
 export
@@ -44,8 +45,6 @@ export
     SubsystemParams,
     SubsystemStates,
     GraphSystem,
-    ODEGraphSystem,
-    SDEGraphSystem,
     get_tag,
     get_states,
     get_params,
@@ -54,11 +53,17 @@ export
     ConnectionMatrices,
     ConnectionMatrix,
     NotConnected,
-    ConnectionRule
+    ConnectionRule,
+    connections,
+    connect!,
+    add_node!,
+    nodes,
+    has_connection
 
 
 #----------------------------------------------------------
 using Base: @kwdef, @propagate_inbounds
+using Base.Iterators: map as imap
 
 using Base.Cartesian: @nexprs
 
@@ -102,7 +107,8 @@ using SparseArrays:
     nonzeros,
     findnz,
     rowvals,
-    nzrange
+    nzrange,
+    sparse
 
 using OrderedCollections:
     OrderedCollections,
@@ -212,12 +218,12 @@ function apply_subsystem_noise!(vstate, subsystem, t)
 end
 
 
-"""
-    must_run_before(::Type{T}, ::Type{U})
+# """
+#     must_run_before(::Type{T}, ::Type{U})
 
-Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`.
-"""
-must_run_before(::Type{T}, ::Type{U}) where {T, U} = false
+# Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`.
+# """
+# must_run_before(::Type{T}, ::Type{U}) where {T, U} = false
 
 function continuous_event_condition end
 function apply_continuous_event! end
@@ -261,6 +267,7 @@ Defaults to `false`, but for subsystems which define a stochastic differential e
 isstochastic(::Subsystem{T}) where {T} = isstochastic(T)
 isstochastic(::T) where {T} = isstochastic(T)
 isstochastic(::Type{T}) where {T} = false
+isstochastic(::Type{Union{}}) = error("This should be unreachable!")
 
 
 for s ∈ [:continuous, :discrete]
@@ -268,6 +275,7 @@ for s ∈ [:continuous, :discrete]
     events_require_inputs = Symbol(s, :_events_require_inputs)
     @eval begin
         $has_events(::Subsystem{T}) where {T} = $has_events(T)
+        $has_events(::Type{Union{}}) = error("This should be unreachable!")
         $has_events(::Type{<:Subsystem{T}}) where {T} = $has_events(T)
         $has_events(::Type{<:SubsystemStates{T}}) where {T} = $has_events(T)
         $has_events(::Type{T}) where {T} = false
@@ -275,6 +283,7 @@ for s ∈ [:continuous, :discrete]
         $events_require_inputs(::Subsystem{T}) where {T} = $events_require_inputs(T)
         $events_require_inputs(::Type{<:Subsystem{T}}) where {T} = $events_require_inputs(T)
         $events_require_inputs(::Type{<:SubsystemStates{T}}) where {T} = $events_require_inputs(T)
+        $events_require_inputs(::Type{Union{}}) = error("This should be unreachable!")
         $events_require_inputs(::Type{T}) where {T} = false
     end
 end
@@ -298,47 +307,22 @@ end
 struct ConnectionMatrices{NConn, Tup <: NTuple{NConn, ConnectionMatrix}}
     matrices::Tup
 end
+Base.eachindex(cm::ConnectionMatrices{NConn}) where {NConn} = 1:NConn
 @inline Base.getindex(m::ConnectionMatrix, i, j) = m.data[i][j]
 Base.getindex(m::ConnectionMatrix, ::Val{i}, ::Val{j}) where {i, j} = m.data[i][j]
 @inline Base.getindex(m::ConnectionMatrices, i) = m.matrices[i]
 Base.length(m::ConnectionMatrices) = length(m.matrices)
 Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
 
-abstract type GraphSystem end
-
-@kwdef struct ODEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, GE, Ns, EP, SNM, PNM, CNM} <: GraphSystem
-    connection_matrices::CM
-    states_partitioned::S
-    params_partitioned::P
-    tstops::EVT = Float64[]
-    composite_discrete_events_partitioned::CDEP = nothing
-    composite_continuous_events_partitioned::CCEP = nothing
-    global_events::GE = ()
-    names_partitioned::Ns
-    extra_params::EP = (;)
-    state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
-    param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
-    compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
-end
-@kwdef struct SDEGraphSystem{CM <: ConnectionMatrices, S, P, EVT, CDEP, CCEP, GE, Ns, EP, SNM, PNM, CNM} <: GraphSystem
-    connection_matrices::CM
-    states_partitioned::S
-    params_partitioned::P
-    tstops::EVT = Float64[]
-    composite_discrete_events_partitioned::CDEP = nothing
-    composite_continuous_events_partitioned::CCEP = nothing
-    global_events::GE = (;)
-    names_partitioned::Ns
-    extra_params::EP = (;)
-    state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
-    param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
-    compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
-end
-
 
 #----------------------------------------------------------
 # Infrastructure for subsystems
 include("subsystems.jl")
+
+#----------------------------------------------------------
+# The GraphSystem type, and the stuff to turn it into a
+# PartitionedGraphSystem
+include("graph_system.jl")
 
 #----------------------------------------------------------
 # Problem generating API:
@@ -354,4 +338,4 @@ include("graph_solve.jl")
 
 #----------------------------------------------------------
 
-end # module GraphSystems
+end # module GraphDynamics

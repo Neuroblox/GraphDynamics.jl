@@ -1,36 +1,66 @@
 # Fallback for failed problem construction
-function (::Type{T})(g::Gsys, args...; kwargs...) where {T <: SciMLBase.AbstractSciMLProblem, Gsys <: GraphSystem}
-    throw(ArgumentError("GraphSystems.jl does not yet support the use of $(Gsys.name.wrapper) in $T.\nThis is either a feature that is not yet supported, or you may have accidentally done something incorrect such as passing an ODEGraphSystem to an SDEProblem."))
+function (::Type{T})(g::GraphSystem, args...; kwargs...) where {T <: SciMLBase.AbstractSciMLProblem}
+    throw(ArgumentError("GraphDynamics.jl does not yet support the use of GraphSystem in $T."))
 end
 
-function SciMLBase.ODEProblem(g::ODEGraphSystem, u0map, tspan, param_map=[];
+function SciMLBase.ODEProblem(g::GraphSystem, u0map, tspan, param_map=[];
                               scheduler=SerialScheduler(), tstops=Float64[],
-                              allow_nonconcrete=false, kwargs...)
-    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map)
+                              allow_nonconcrete=false, global_events=(), kwargs...)
+    g_part = PartitionedGraphSystem(g)
+    ODEProblem(g_part, u0map, tspan, param_map; scheduler, tstops, allow_nonconcrete, global_events, kwargs...)
+end
+function SciMLBase.SDEProblem(g::GraphSystem, u0map, tspan, param_map=[];
+                              scheduler=SerialScheduler(), tstops=Float64[],
+                              allow_nonconcrete=false, global_events=(), kwargs...)
+    g_part = PartitionedGraphSystem(g)
+    SDEProblem(g_part, u0map, tspan, param_map; scheduler, tstops, allow_nonconcrete, global_events, kwargs...)
+end
+
+
+function  SciMLBase.ODEProblem(g::PartitionedGraphSystem, u0map, tspan, param_map=[];
+                    scheduler=SerialScheduler(), tstops=Float64[],
+                    allow_nonconcrete=false, global_events=(), kwargs...)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map, global_events)
     (; f, u, tspan, p, callback) = nt
+    if g.is_stochastic
+        error("Passed a stochastic GraphSystem to ODEProblem. You probably meant to use SDEProblem")
+    end
     tstops = vcat(tstops, nt.tstops)
     prob = ODEProblem{true, SciMLBase.FullSpecialize}(f, u, tspan, p; callback, tstops, kwargs...)
-    for (k, v) ∈ u0map
-        setu(prob, k)(prob, v)
-    end
+    # let ukeys = map(first, u0map),
+    #     uvals = map(last, u0map)
+    #     setu(prob, ukeys)(prob, uvals)
+    # end
+    # let pkeys = map(first, param_map),
+    #     pvals = map(last, param_map)
+    #     setp(prob, pkeys)(prob, pvals)
+    # end
+     for (k, v) ∈ u0map
+         setu(prob, k)(prob, v)
+     end
     for (k, v) ∈ param_map
         setp(prob, k)(prob, v)
     end
     prob
 end
-function SciMLBase.SDEProblem(g::SDEGraphSystem, u0map, tspan, param_map=[];
+
+function SciMLBase.SDEProblem(g::PartitionedGraphSystem, u0map, tspan, param_map=[];
                               scheduler=SerialScheduler(), tstops=Float64[],
-                              allow_nonconcrete=false, kwargs...)
-    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map)
+                              allow_nonconcrete=false, global_events=(), kwargs...)
+    nt = _problem(g, tspan; scheduler, allow_nonconcrete, u0map, param_map, global_events)
     (; f, u, tspan, p, callback) = nt
-    
-    noise_rate_prototype = nothing # zeros(length(u)) # this'll need to change once we support correlated noise
-    prob = SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
-    for (k, v) ∈ u0map
-        setu(prob, k)(prob, v)
+    if !g.is_stochastic
+        error("Passed a non-stochastic GraphSystem to SDEProblem. You probably meant to use ODEProblem")
     end
-    for (k, v) ∈ param_map
-        setp(prob, k)(prob, v)
+    noise_rate_prototype = nothing # this'll need to change once we support correlated noise
+    prob = SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
+    let ukeys = map(first, u0map),
+        uvals = map(last, u0map)
+        setu(prob, ukeys)(prob, uvals)
+    end
+    let pkeys = map(first, param_map),
+        pvals = map(last, param_map)
+        setp(prob, pkeys)(prob, pvals)
     end
     prob
 end
@@ -44,14 +74,11 @@ Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, EP<:NamedTuple}
     extra_params::EP=(;)
 end
 
-function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map)
+function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map, global_events)
     (; states_partitioned,
      params_partitioned,
      connection_matrices,
-     tstops,
-     composite_discrete_events_partitioned,
-     composite_continuous_events_partitioned,
-     global_events) = g
+     tstops) = g
 
     total_eltype = let
         states_eltype = mapreduce(promote_type, states_partitioned) do v
@@ -103,14 +130,16 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
             0
         end
     end
-    offset = 0
-    partition_plan = map(states_partitioned) do v
-        sz = (length(eltype(v)), length(v))
-        L = prod(sz)
-        inds = (1:L) .+ offset
-        plan = (;inds, sz, TVal=Val(eltype(v)))
-        offset += L
-        plan
+
+    partition_plan = let offset=Ref(0)
+        map(states_partitioned) do v
+            sz = (length(eltype(v)), length(v))
+            L = prod(sz)
+            inds = (1:L) .+ offset[]
+            plan = (;inds, sz, TVal=Val(eltype(v)))
+            offset[] += L
+            plan
+        end
     end
     u = reduce(vcat, map(v -> reduce(vcat, v), states_partitioned))
     if !allow_nonconcrete && !isconcretetype(eltype(u)) && !all(isconcretetype ∘ eltype, states_partitioned)
@@ -124,58 +153,13 @@ function _problem(g::GraphSystem, tspan; scheduler, allow_nonconcrete, u0map, pa
 
     ce = nce > 0 ? VectorContinuousCallback(continuous_condition, continuous_affect!, nce) : nothing
     de = nde > 0 ? DiscreteCallback(discrete_condition, discrete_affect!) : nothing
-    callback = CallbackSet(ce, de, composite_discrete_callbacks(composite_discrete_events_partitioned), global_events...)
+    callback = CallbackSet(ce, de, global_events...)
     f = GraphSystemFunction(graph_ode!, g)
     p = GraphSystemParameters(; params_partitioned,
                               connection_matrices,
                               scheduler,
                               partition_plan,
                               discrete_event_cache)
+
     (; f, u, tspan, p, callback, tstops)
-end
-
-composite_discrete_callbacks(::Nothing) = nothing
-function composite_discrete_callbacks(composite_discrete_events_partitioned::NTuple{Len, Any}) where {Len}
-    function composite_event_conditions(u, t, integrator)
-        (;params_partitioned, partition_plan, connection_matrices) = integrator.p
-        states_partitioned = partitioned(u, partition_plan)
-        for i ∈ 1:Len
-            for j ∈ eachindex(composite_discrete_events_partitioned[i])
-                ev = composite_discrete_events_partitioned[i][j]
-                if discrete_event_condition(states_partitioned,
-                                            params_partitioned,
-                                            connection_matrices,
-                                            ev, t)
-                    return true
-                end
-            end
-        end
-        false
-    end
-    function composite_event_affect!(integrator)
-        (;params_partitioned, partition_plan, connection_matrices) = integrator.p
-        states_partitioned = partitioned(integrator.u, partition_plan)
-        (;t) = integrator
-        for i ∈ 1:Len
-            for j ∈ eachindex(composite_discrete_events_partitioned[i])
-                ev = composite_discrete_events_partitioned[i][j]
-                if discrete_event_condition(states_partitioned,
-                                            params_partitioned,
-                                            connection_matrices,
-                                            ev, t)
-                    apply_discrete_event!(integrator,
-                                          states_partitioned,
-                                          params_partitioned,
-                                          connection_matrices,
-                                          t, ev)
-                end
-            end
-        end
-    end
-    DiscreteCallback(composite_event_conditions, composite_event_affect!)
-end
-
-composite_continuous_callbacks(::Nothing) = nothing
-function composite_continuous_callbacks(::NTuple{Len, Any}) where {Len}
-    error("Composite continuous events are not yet implemented")
 end

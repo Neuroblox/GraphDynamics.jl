@@ -1,50 +1,53 @@
 #----------------------------------------------------------
 function graph_ode!(du,
-                              u,
-                              (;params_partitioned, connection_matrices, scheduler, partition_plan)::P,
-                              t) where {P}
+                    u,
+                    (;params_partitioned, connection_matrices, scheduler, partition_plan)::P,
+                    t) where {P}
     states_partitioned  = partitioned( u, partition_plan)
     dstates_partitioned = partitioned(du, partition_plan)
     _graph_ode!(dstates_partitioned, states_partitioned, params_partitioned, connection_matrices, scheduler, t)
 end
 
-function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
-                     states_partitioned ::NTuple{Len, Any},
-                     params_partitioned ::NTuple{Len, Any},
-                     connection_matrices::ConnectionMatrices{NConn},
-                     scheduler,
-                     t,) where {Len, NConn}
-    @unroll 16 for i ∈ 1:Len
-        f = make_graph_ode_mapping_f(
-            Val(i),
-            dstates_partitioned,
-            states_partitioned,
-            params_partitioned,
-            connection_matrices,
-            scheduler,
-            t
-        )
-        tforeach(f, eachindex(states_partitioned[i]); scheduler)
+@generated function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
+                                states_partitioned ::NTuple{Len, Any},
+                                params_partitioned ::NTuple{Len, Any},
+                                connection_matrices::ConnectionMatrices{NConn},
+                                scheduler,
+                                t,) where {Len, NConn}
+    quote
+        @nexprs $Len i -> begin
+            f = make_graph_ode_mapping_f(
+                Val(i),
+                dstates_partitioned,
+                states_partitioned,
+                params_partitioned,
+                connection_matrices,
+                scheduler,
+                t
+            )
+            tforeach(f, eachindex(states_partitioned[i]); scheduler)
+        end
     end
 end
 
 
-function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
+@generated function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
                      states_partitioned ::NTuple{Len, Any},
                      params_partitioned ::NTuple{Len, Any},
                      connection_matrices::ConnectionMatrices{NConn},
                      scheduler::SerialScheduler,
                      t) where {Len, NConn}
-
-    @unroll 16 for i ∈ 1:Len
-        for j ∈ eachindex(states_partitioned[i])
-            _graph_ode_mapping_f(j, Val(i),
-                                 dstates_partitioned,
-                                 states_partitioned,
-                                 params_partitioned,
-                                 connection_matrices,
-                                 scheduler,
-                                 t)
+    quote
+        @nexprs $Len i -> begin
+            for j ∈ eachindex(states_partitioned[i])
+                _graph_ode_mapping_f(j, Val(i),
+                                     dstates_partitioned,
+                                     states_partitioned,
+                                     params_partitioned,
+                                     connection_matrices,
+                                     scheduler,
+                                     t)
+            end
         end
     end
 end
