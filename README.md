@@ -148,7 +148,7 @@ g = GraphSystem()
 connect!(g, particle1 => osc; conn=Spring(1))
 connect!(g, particle2 => osc; conn=Spring(1))
 
-# Newton's third law! also need equal and opposite connections from osc to the partciles
+# Newton's third law! also need equal and opposite connections from osc to the particles
 connect!(g, osc => particle1; conn=Spring(1))
 connect!(g, osc => particle2; conn=Spring(1)) 
 ```
