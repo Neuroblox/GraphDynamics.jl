@@ -1,0 +1,11 @@
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
+.vscode
+neuroblox.code-workspace
+*.mat
+.DS_Store
+docs/build/
+*~
+*#

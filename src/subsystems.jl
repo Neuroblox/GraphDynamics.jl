@@ -38,7 +38,6 @@ function Base.convert(::Type{SubsystemParams{Name, NT}}, p::SubsystemParams{Name
     SubsystemParams{Name}(convert(NT, NamedTuple(p)))
 end
 
-
 #------------------------------------------------------------
 # Subsystem states
 function SubsystemStates{Name, Eltype, States}(v::AbstractVector) where {Name, Eltype, States <: NamedTuple}

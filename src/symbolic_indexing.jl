@@ -1,6 +1,6 @@
-struct GraphSystemFunction{F, GS <: GraphSystem} <: Function
+struct GraphSystemFunction{F, PGS <: PartitionedGraphSystem} <: Function
     f::F
-    sys::GS
+    sys::PGS
 end
 (f::GraphSystemFunction{F})(args...; kwargs...) where {F} = f.f(args...; kwargs...)
 
@@ -104,21 +104,21 @@ end
 
 
 
-function SymbolicIndexingInterface.is_variable(g::GraphSystem, sym)
+function SymbolicIndexingInterface.is_variable(g::PartitionedGraphSystem, sym)
     haskey(g.state_namemap, sym)
 end
-function SymbolicIndexingInterface.variable_index(f::GraphSystem, sym)
+function SymbolicIndexingInterface.variable_index(f::PartitionedGraphSystem, sym)
     get(f.state_namemap, sym, nothing)
 end
-function SymbolicIndexingInterface.variable_symbols(g::GraphSystem)
+function SymbolicIndexingInterface.variable_symbols(g::PartitionedGraphSystem)
     collect(keys(g.state_namemap))
 end
 
 
-function SymbolicIndexingInterface.is_parameter(g::GraphSystem, sym)
+function SymbolicIndexingInterface.is_parameter(g::PartitionedGraphSystem, sym)
     haskey(g.param_namemap, sym)
 end
-function SymbolicIndexingInterface.parameter_index(g::GraphSystem, sym)
+function SymbolicIndexingInterface.parameter_index(g::PartitionedGraphSystem, sym)
     g.param_namemap[sym]
 end
 
@@ -129,20 +129,20 @@ function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i:
     p.params_partitioned[i]
 end
 
-function SymbolicIndexingInterface.parameter_symbols(g::GraphSystem)
+function SymbolicIndexingInterface.parameter_symbols(g::PartitionedGraphSystem)
     collect(keys(g.param_namemap))
 end
 
-function SymbolicIndexingInterface.is_independent_variable(sys::GraphSystem, sym)
+function SymbolicIndexingInterface.is_independent_variable(sys::PartitionedGraphSystem, sym)
     sym === :t
 end
 
 
-function SymbolicIndexingInterface.independent_variable_symbols(sys::GraphSystem)
+function SymbolicIndexingInterface.independent_variable_symbols(sys::PartitionedGraphSystem)
     (:t,)
 end
 
-function SymbolicIndexingInterface.is_time_dependent(sys::GraphSystem)
+function SymbolicIndexingInterface.is_time_dependent(sys::PartitionedGraphSystem)
     true
 end
 
@@ -153,11 +153,11 @@ function SymbolicIndexingInterface.observed(f::SDEFunction{a, b, F}, sym::Symbol
     observed(f.f.sys, sym)
 end
 
-function SymbolicIndexingInterface.is_observed(sys::GraphSystem, sym)
+function SymbolicIndexingInterface.is_observed(sys::PartitionedGraphSystem, sym)
     haskey(sys.compu_namemap, sym)
 end
 
-function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
+function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, sym)
     (; tup_index, v_index, prop, requires_inputs) = sys.compu_namemap[sym]
     
     # lift these to the type domain so that we specialize on them in the returned closures
@@ -186,14 +186,14 @@ function SymbolicIndexingInterface.observed(sys::GraphSystem, sym)
     end
 end
 
-# function SymbolicIndexingInterface.all_solvable_symbols(sys::GraphSystem)
+# function SymbolicIndexingInterface.all_solvable_symbols(sys::PartitionedGraphSystem)
 #     vcat(
 #         collect(keys(sys.state_namemap)),
 #         collect(keys(sys.observed_namemap)),
 #     )
 # end
 
-# function SymbolicIndexingInterface.all_symbols(sys::GraphSystem)
+# function SymbolicIndexingInterface.all_symbols(sys::PartitionedGraphSystem)
 #     vcat(
 #         all_solvable_symbols(sys),
 #         collect(keys(sys.param_namemap)),
