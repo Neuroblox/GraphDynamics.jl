@@ -145,17 +145,17 @@ Lets create a `GraphSystem` where each particle is connected to the `osc` by a `
 g = GraphSystem()
 
 # Connect particles to osc
-connect!(g, particle1 => osc; conn=Spring(1))
-connect!(g, particle2 => osc; conn=Spring(1))
+add_connection!(g, particle1 => osc; conn=Spring(1))
+add_connection!(g, particle2 => osc; conn=Spring(1))
 
 # Newton's third law! also need equal and opposite connections from osc to the particles
-connect!(g, osc => particle1; conn=Spring(1))
-connect!(g, osc => particle2; conn=Spring(1)) 
+add_connection!(g, osc => particle1; conn=Spring(1))
+add_connection!(g, osc => particle2; conn=Spring(1)) 
 ```
 and lets make the particles repel eachother with a Coulomb repulsion
 ``` julia
-connect!(g, particle1 => particle2; conn=Coulomb())
-connect!(g, particle2 => particle1; conn=Coulomb())
+add_connection!(g, particle1 => particle2; conn=Coulomb())
+add_connection!(g, particle2 => particle1; conn=Coulomb())
 ```
 
 We can now solve, and plot the system's solution like so:
