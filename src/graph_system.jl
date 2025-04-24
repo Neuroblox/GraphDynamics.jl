@@ -25,7 +25,7 @@ function props(g::GraphSystem, src, dst)
     g.data[src][dst]
 end
 
-function connect!(g::GraphSystem, src, dst; kwargs...)
+function add_connection!(g::GraphSystem, src, dst; kwargs...)
     d_src = add_node!(g, src)
     d_dst = add_node!(g, dst)
 
@@ -43,10 +43,10 @@ end
     """
 )
 
-connect!(g::GraphSystem, src, dst, d::AbstractDict) = connect!(g, src, dst; d...)
-connect!(g::GraphSystem, src, dst, nt::NamedTuple) = connect!(g, src, dst; nt...)
-function connect!(g::GraphSystem, (src, dst)::Pair; kwargs...)
-    connect!(g, src, dst; kwargs...)
+add_connection!(g::GraphSystem, src, dst, d::AbstractDict) = add_connection!(g, src, dst; d...)
+add_connection!(g::GraphSystem, src, dst, nt::NamedTuple) = add_connection!(g, src, dst; nt...)
+function add_connection!(g::GraphSystem, (src, dst)::Pair; kwargs...)
+    add_connection!(g, src, dst; kwargs...)
 end
 
 has_connection(g::GraphSystem, src, dst) = haskey(g.data, src) && haskey(g.data[src], dst)
@@ -56,16 +56,23 @@ function Base.merge!(g1::GraphSystem, g2::GraphSystem)
         add_node!(g1, x)
     end
     for (;src, dst, data) ∈ connections(g2)
-        connect!(g1, src, dst; data...)
+        add_connection!(g1, src, dst; data...)
     end
     g1
 end
+function Base.merge(g1::GraphSystem, g2::GraphSystem)
+    g3 = GraphSystem()
+    merge!(g3, g1)
+    merge!(g3, g2)
+    g3
+end
+
 
 function system_wiring_rule!(g, node)
     add_node!(g, node)
 end
 function system_wiring_rule!(g, src, dst; conn, kwargs...)
-    connect!(g, src, dst; conn, kwargs...)
+    add_connection!(g, src, dst; conn, kwargs...)
 end
 
 
@@ -146,10 +153,10 @@ function PartitionedGraphSystem(g::GraphSystem)
 	@named n2 = SysType1(x=1, y=3)
 	@named n3 = SysType2(a=1, b=2, c=3)
     
-    connect!(g, n1, n2; conn=C1(1))
-    connect!(g, n2, n3; conn=C1(2))
-    connect!(g, n3, n1; conn=C2(3))
-    connect!(g, n3, n2; conn=C3(4))
+    add_connection!(g, n1, n2; conn=C1(1))
+    add_connection!(g, n2, n3; conn=C1(2))
+    add_connection!(g, n3, n1; conn=C2(3))
+    add_connection!(g, n3, n2; conn=C3(4))
     
     we'd get
     connection_matrix_1 = Conn1[⎡. 1⎤⎡.⎤

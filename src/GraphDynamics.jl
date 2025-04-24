@@ -45,6 +45,7 @@ export
     SubsystemParams,
     SubsystemStates,
     GraphSystem,
+    PartitionedGraphSystem,
     get_tag,
     get_states,
     get_params,
@@ -55,7 +56,7 @@ export
     NotConnected,
     ConnectionRule,
     connections,
-    connect!,
+    add_connection!,
     add_node!,
     nodes,
     has_connection

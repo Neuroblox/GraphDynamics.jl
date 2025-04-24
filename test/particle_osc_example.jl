@@ -118,13 +118,13 @@ function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5(), saveat=no
     g = GraphSystem()
     fac = 1.0
 
-    connect!(g, particle1, osc; conn=Spring(1))
-    connect!(g, particle2, osc; conn=Spring(1))
-    connect!(g, osc, particle1; conn=Spring(1))
-    connect!(g, osc, particle2; conn=Spring(1))
+    add_connection!(g, particle1, osc; conn=Spring(1))
+    add_connection!(g, particle2, osc; conn=Spring(1))
+    add_connection!(g, osc, particle1; conn=Spring(1))
+    add_connection!(g, osc, particle2; conn=Spring(1))
 
-    connect!(g, particle1, particle2; conn=Coulomb(fac))
-    connect!(g, particle2, particle1; conn=Coulomb(fac))
+    add_connection!(g, particle1, particle2; conn=Coulomb(fac))
+    add_connection!(g, particle2, particle1; conn=Coulomb(fac))
 
     prob = ODEProblem(g, [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0], (0.0, 20.0), [:osc₊m => 3.0])
     sol = solve(prob, Tsit5(); reltol)
