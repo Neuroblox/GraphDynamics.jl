@@ -22,29 +22,29 @@ Construct a type `Particle` representing a particle with mass `m` and charge `q`
 using GraphDynamics
 using Base: @kwdef
 @kwdef struct Particle
-	name::Symbol 
-	m::Float64
+    name::Symbol 
+    m::Float64
     q::Float64=1.0
-	x_init::Float64 = 0.0
-	v_init::Float64 = 0.0
+    x_init::Float64 = 0.0
+    v_init::Float64 = 0.0
 end
 function GraphDynamics.to_subsystem(p::Particle)
     # Unpack the fields of the Particle
-	(;name, m, q, x_init, v_init) = p
+    (;name, m, q, x_init, v_init) = p
     # Set the initial states to `x_init` and `v_init`
-	states = SubsystemStates{Particle}(;
-		x = x_init,
-		v = v_init,
-	)
+    states = SubsystemStates{Particle}(;
+        x = x_init,
+        v = v_init,
+    )
     # Use `name`, `m`, and `q` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Particle}(
         ;name,
-		m,
+        m,
         q,
-	)
+    )
     # Assemble a Subsystem
-	Subsystem(states, params)
+    Subsystem(states, params)
 end
 
 GraphDynamics.initialize_input(::Subsystem{Particle}) = (; F=0.0) # Default force on a `Particle` is 0.0
@@ -53,8 +53,8 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, input, t
     (;F) = input # Force `F` is the input to the subsystem
     dx = v   # Derivative of x is just v
     dv = F/m # Derivative of v is F/m (from F = m*a where a = dv/dt)
-	
-	# Return the differential of the current state:
+    
+    # Return the differential of the current state:
     SubsystemStates{Particle}(;x=dx, v=dv) 
 end
 ```
@@ -63,32 +63,32 @@ Now we construct a type `Oscillator` which represents a particle attached to a s
 
 ```julia
 @kwdef struct Oscillator
-	name::Symbol
-	m::Float64
-	x₀::Float64
-	k::Float64
+    name::Symbol
+    m::Float64
+    x₀::Float64
+    k::Float64
     q::Float64=1.0
-	x_init = 0.0
-	v_init = 0.0
+    x_init = 0.0
+    v_init = 0.0
 end
 function GraphDynamics.to_subsystem(p::Oscillator)
     # Unpack the fields of the Oscillator
-	(;name, m, x₀, k, q, x_init, v_init) = p
+    (;name, m, x₀, k, q, x_init, v_init) = p
     # Set the initial states to `x_init` and `v_init`
-	states = SubsystemStates{Oscillator}(;
-		x = x_init,
-		v = v_init,
-	)
+    states = SubsystemStates{Oscillator}(;
+        x = x_init,
+        v = v_init,
+    )
     # Use `name`, `m`, `k`, `x₀`, and `q` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Oscillator}(
-		;name,
-		m,
-		k,
-		x₀,
+        ;name,
+        m,
+        k,
+        x₀,
         q,
-	)
-	Subsystem(states, params)
+    )
+    Subsystem(states, params)
 end
 GraphDynamics.initialize_input(::Subsystem{Oscillator}) = (; F = 0.0)
 function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, input, t)
@@ -170,4 +170,4 @@ sol = solve(prob, Tsit5())
 plot(sol, idxs=[:particle1₊x, :particle2₊x, :osc₊x])
 ```
 
-	![the solution](./sol_example.png)
+    ![the solution](./sol_example.png)
