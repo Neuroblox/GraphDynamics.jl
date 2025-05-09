@@ -4,14 +4,14 @@ struct GraphSystemConnection
     data::NamedTuple
 end
 struct GraphSystem
-    data::OrderedDict{Any, OrderedDict{Any, GraphSystemConnection}}
+    data::OrderedDict{Any, OrderedDict{Any, Vector{GraphSystemConnection}}}
 end
 GraphSystem() = GraphSystem(OrderedDict{Any, OrderedDict{Any, GraphSystemConnection}}())
 GraphSystemConnection(src, dst; kwargs...) = GraphSystemConnection(src, dst, NamedTuple(kwargs))
 
-connections(g::GraphSystem) = (Iterators.flatten ∘ Iterators.map)(g.data) do (_, destinations)
-    Iterators.map(destinations) do (_, edge)
-        edge
+connections(g::GraphSystem) = Iterators.flatmap(g.data) do (_, destinations)
+    Iterators.flatmap(destinations) do (_, edges)
+        edges
     end
 end
 nodes(g::GraphSystem) = keys(g.data)
@@ -21,7 +21,7 @@ function add_node!(g::GraphSystem, blox)
     end
 end
 
-function props(g::GraphSystem, src, dst)
+function connections(g::GraphSystem, src, dst)
     g.data[src][dst]
 end
 
@@ -29,19 +29,9 @@ function add_connection!(g::GraphSystem, src, dst; kwargs...)
     d_src = add_node!(g, src)
     d_dst = add_node!(g, dst)
 
-    if haskey(d_src, dst)
-        double_connection_error(src, dst)
-    end
-    d_src[dst] = GraphSystemConnection(src, dst, NamedTuple(kwargs))
+    v = get!(d_src, dst, GraphSystemConnection[])
+    push!(v, GraphSystemConnection(src, dst, NamedTuple(kwargs)))
 end
-@noinline double_connection_error(src, dst) = error(
-    """
-    Attempted to add a connection between two nodes that already have a connection. This is not currently allowed. The source node was
-    $src
-    and the destination node was
-    $dst
-    """
-)
 
 add_connection!(g::GraphSystem, src, dst, d::AbstractDict) = add_connection!(g, src, dst; d...)
 add_connection!(g::GraphSystem, src, dst, nt::NamedTuple) = add_connection!(g, src, dst; nt...)
@@ -67,15 +57,12 @@ function Base.merge(g1::GraphSystem, g2::GraphSystem)
     g3
 end
 
-
 function system_wiring_rule!(g, node)
     add_node!(g, node)
 end
 function system_wiring_rule!(g, src, dst; conn, kwargs...)
     add_connection!(g, src, dst; conn, kwargs...)
 end
-
-
 
 @kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, EVT, Ns, EP, SNM, PNM, CNM}
     is_stochastic::Bool
@@ -203,6 +190,7 @@ function make_partitioned_nodes(g_flat)
 end
 
 function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nodes(g_flat); pred=(_) -> true, conn_key=:conn)
+    check_no_double_connections(g_flat, conn_key)
     connection_types = (imap)(connections(g_flat)) do (; src, dst, data)
         if haskey(data, conn_key) && pred(data[conn_key])
             typeof(data[conn_key])
@@ -220,16 +208,17 @@ function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nod
                 for (j, nodeij) ∈ enumerate(nodeis)
                     for (l, nodekl) ∈ enumerate(nodeks)
                         if has_connection(g_flat, nodekl, nodeij)
-                            (; data) = props(g_flat, nodekl, nodeij)
-                            if haskey(data, conn_key)
-                                conn = data[conn_key]
-                                if conn isa CT && pred(conn)
-                                    push!(js, j)
-                                    push!(ls, l)
-                                    push!(conns, conn)
-                                    
-                                    for t ∈ event_times(conn)
-                                        push!(connection_tstops, t)
+                            for (; data) = connections(g_flat, nodekl, nodeij)
+                                if haskey(data, conn_key)
+                                    conn = data[conn_key]
+                                    if conn isa CT && pred(conn)
+                                        push!(js, j)
+                                        push!(ls, l)
+                                        push!(conns, conn)
+                                        
+                                        for t ∈ event_times(conn)
+                                            push!(connection_tstops, t)
+                                        end
                                     end
                                 end
                             end
@@ -246,4 +235,18 @@ function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nod
         end
     end
     (; connection_matrices, connection_tstops)
+end
+
+function check_no_double_connections(g, conn_key)
+    for src ∈ nodes(g)
+        for dst ∈ nodes(g)
+            if has_connection(g, src, dst)
+                ps = connections(g, src, dst)
+                conns = [data[conn_key] for (;data) ∈ connections(g, src, dst) if haskey(data, conn_key)]
+                if length(unique(typeof, conns)) < length(conns)
+                    error("Cannot have multiple connections between the same two nodes of the same type. Got $(conns) between $src and $dst.")
+                end
+            end
+        end
+    end
 end
