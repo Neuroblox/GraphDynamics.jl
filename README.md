@@ -170,4 +170,4 @@ sol = solve(prob, Tsit5())
 plot(sol, idxs=[:particle1₊x, :particle2₊x, :osc₊x])
 ```
 
-    ![the solution](./sol_example.png)
+![the solution](./sol_example.png)
