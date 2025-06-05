@@ -200,3 +200,36 @@ end
 #         :t
 #     )
 # end
+
+function SymbolicIndexingInterface.remake_buffer(sys, oldbuffer::GraphSystemParameters, idxs, vals)
+    newbuffer = @set oldbuffer.params_partitioned = copy.(oldbuffer.params_partitioned)
+    set_params!!(newbuffer, zip(idxs, vals))
+end
+
+function set_params!!(buffer::GraphSystemParameters, param_map)
+    (; params_partitioned, param_namemap) = buffer
+    for (key, val) ∈ param_map
+        let (;tup_index, v_index, prop) = param_namemap[key]
+            params = params_partitioned[tup_index][v_index]
+            params_new = set_param_prop(params, prop, val; allow_typechange=true)
+            peltype = eltype(params_partitioned[tup_index])
+            if !(typeof(params_new) <: peltype)
+                new_eltype = promote_type(typeof(params_new), peltype)
+                @reset params_partitioned[tup_index] = convert.(new_eltype, params_partitioned[tup_index])
+            end
+            params_partitioned[tup_index][v_index] = params_new
+        end
+    end
+    @reset buffer.params_partitioned = params_partitioned#re_eltype_params(params_partitioned)
+end
+
+function re_eltype_params(params_partitioned)
+    map(params_partitioned) do v
+        ptype = mapreduce(typeof, promote_type, v)
+        if ptype == eltype(v)
+            v
+        else
+            convert.(ptype, v)
+        end
+    end
+end

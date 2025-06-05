@@ -1,4 +1,4 @@
-using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff
+using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff, FiniteDiff
 
 using GraphDynamics
 using Base: @kwdef
@@ -14,7 +14,7 @@ using Base: @kwdef
 end
 function GraphDynamics.to_subsystem(p::Particle)
     # Unpack the fields of the Particle
-	(;name, m, q, x_init, v_init) = p
+	(;m, q, x_init, v_init) = p
     # Set the initial states to `x_init` and `v_init`
 	states = SubsystemStates{Particle}(;
 		x = x_init,
@@ -23,8 +23,7 @@ function GraphDynamics.to_subsystem(p::Particle)
     # Use `name`, `m`, and `q` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Particle}(
-        ;name,
-		m,
+        ;m,
         q,
 	)
     # Assemble a Subsystem
@@ -58,7 +57,7 @@ end
 end
 function GraphDynamics.to_subsystem(p::Oscillator)
     # Unpack the fields of the Oscillator
-	(;name, m, x₀, k, x_init, v_init) = p
+	(;m, x₀, k, x_init, v_init) = p
     # Set the initial states to `x_init` and `v_init`
 	states = SubsystemStates{Oscillator}(;
 		x = x_init,
@@ -67,8 +66,7 @@ function GraphDynamics.to_subsystem(p::Oscillator)
     # Use `name`, `m`, `k`, `x₀` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Oscillator}(
-		;name,
-		m,
+		;m,
 		k,
 		x₀,
 	)
@@ -108,7 +106,7 @@ function ((;fac)::Coulomb)(src::Subsystem, dst::Subsystem)
     return (; F)
 end
 
-function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5(), saveat=nothing, reltol=nothing)
+function particle_osc_prob(;x1, x2, m=3.0, mp1=1.0, tspan = (0.0, 10.0), alg=Tsit5())
     # put some garbage values in here for states and params, but we'll set them to reasonable values later with the
     # u0map and param_map
     particle1 = Particle(  name=:particle1, x_init= NaN, v_init=0.0, m=1.0, q=1.0)
@@ -126,38 +124,54 @@ function solve_particle_osc(;x1, x2, tspan = (0.0, 10.0), alg=Tsit5(), saveat=no
     add_connection!(g, particle1, particle2; conn=Coulomb(fac))
     add_connection!(g, particle2, particle1; conn=Coulomb(fac))
 
-    prob = ODEProblem(g, [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0], (0.0, 20.0), [:osc₊m => 3.0])
+    prob = ODEProblem(g, [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0], (0.0, 20.0), (:osc₊m => m, :particle1₊m =>mp1))
+end
+function solve_particle_osc(;reltol=nothing, saveat=nothing, kwargs...)
+    prob = particle_osc_prob(; kwargs...)
     sol = solve(prob, Tsit5(); reltol)
-    # plot(sol; idxs=[:particle1₊x, :particle2₊x, :osc₊x])
 end
 
+function solution_solve_test()
+    @testset "solutions" begin
+        t = 10.0
+        sol = solve_particle_osc(;x1=1.0, x2=-1.0, tspan=(0.0, t), reltol=1e-8)
 
-@testset "solutions" begin
-    t = 10.0
-    sol = solve_particle_osc(;x1=1.0, x2=-1.0, tspan=(0.0, t), reltol=1e-8)
+        @test sol(t; idxs=:particle1₊x) ≈ -0.071889 rtol=1e-3
+        @test sol(t; idxs=:particle2₊x) ≈ -1.223721 rtol=1e-3
+        @test sol(t; idxs=:osc₊x)       ≈ -0.728811 rtol=1e-3
+        
+        k = GraphDynamics.getp(sol, :osc₊k)(sol)
+        m = GraphDynamics.getp(sol, :osc₊m)(sol)
+        @test sol(t, idxs=:osc₊ω₀) == √(k/m)
 
-    @test sol(t; idxs=:particle1₊x) ≈ -0.071889 rtol=1e-3
-    @test sol(t; idxs=:particle2₊x) ≈ -1.223721 rtol=1e-3
-    @test sol(t; idxs=:osc₊x)       ≈ -0.728811 rtol=1e-3
-    
-    k = GraphDynamics.getp(sol, :osc₊k)(sol)
-    m = GraphDynamics.getp(sol, :osc₊m)(sol)
-    @test sol(t, idxs=:osc₊ω₀) == √(k/m)
-
-    # :particle1₊a is a computed property that depends on inputs (F). It should be equal to
-    # the second derivative of the position (since it's an acceleration)
-    # Note that sol(t, Val{2}) means "second derivative of sol at t" (using the interpolation).
-    @test sol(t-1.0; idxs=:particle1₊a) ≈ sol(t-1.0, Val{2}; idxs=:particle1₊x) rtol=1e-3
-end
-
-@testset "sensitivies" begin
-    jac = ForwardDiff.jacobian([1.0, -1.0]) do (x1, x2)
-        sol = solve_particle_osc(;x1, x2, reltol=1e-8)
-        [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+        # :particle1₊a is a computed property that depends on inputs (F). It should be equal to
+        # the second derivative of the position (since it's an acceleration)
+        # Note that sol(t, Val{2}) means "second derivative of sol at t" (using the interpolation).
+        @test sol(t-1.0; idxs=:particle1₊a) ≈ sol(t-1.0, Val{2}; idxs=:particle1₊x) rtol=1e-3
     end
-    @test jac ≈ [ 0.447758    -0.130676
-                 -0.00658249   0.321607
-                 -0.0721989    0.0884696] rtol=1e-3
 end
 
+function sensitivity_test()
+    @testset "sensitivies" begin
+        jac_ad = ForwardDiff.jacobian([1.0, -1.0]) do (x1, x2)
+            sol = solve_particle_osc(;x1, x2, reltol=1e-8)
+            [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+        end
+        jac_fd = FiniteDiff.finite_difference_jacobian([1.0, -1.0]) do (x1, x2)
+            sol = solve_particle_osc(;x1, x2, reltol=1e-8)
+            [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+        end
+        @test jac_ad ≈ jac_fd rtol=1e-3
 
+        # Test that we can take a derivative involving 
+        mdiv_ad = ForwardDiff.derivative(3.0) do m
+            sol = solve_particle_osc(;x1=one(typeof(m)), x2=-1.0, m=m, reltol=1e-8)
+            sol[:particle1₊x, end]
+        end
+        mdiv_fd = FiniteDiff.finite_difference_derivative(3.0) do m
+            sol = solve_particle_osc(;x1=1.0, x2=-1.0, m=m, reltol=1e-8)
+            sol[:particle1₊x, end]
+        end
+        @test mdiv_ad ≈ mdiv_fd rtol=1e-3
+    end
+end

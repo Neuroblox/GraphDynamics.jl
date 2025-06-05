@@ -300,11 +300,21 @@ abstract type ConnectionRule end
 (c::ConnectionRule)(src, dst, t) = c(src, dst)
 Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 
-struct NotConnected <: ConnectionRule end
-(::NotConnected)(l, r) = zero(promote_type(eltype(l), eltype(r)))
-struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected, AbstractMatrix{CR}}}}}
+struct NotConnected{CR <: ConnectionRule} end
+Base.getindex(::NotConnected{CR}, inds...) where {CR} = zero(CR)
+Base.copy(c::NotConnected) = c
+struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected{CR}, AbstractMatrix{CR}}}}}
     data::Tup
 end
+function Base.copy(c::ConnectionMatrix)
+    data′ = map(c.data) do col
+        map(col) do mat
+            copy(mat)
+        end
+    end
+    ConnectionMatrix(data′)
+end
+
 struct ConnectionMatrices{NConn, Tup <: NTuple{NConn, ConnectionMatrix}}
     matrices::Tup
 end
@@ -314,7 +324,7 @@ Base.getindex(m::ConnectionMatrix, ::Val{i}, ::Val{j}) where {i, j} = m.data[i][
 @inline Base.getindex(m::ConnectionMatrices, i) = m.matrices[i]
 Base.length(m::ConnectionMatrices) = length(m.matrices)
 Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
-
+Base.copy(c::ConnectionMatrices) = ConnectionMatrices(map(copy, c.matrices))
 
 #----------------------------------------------------------
 # Infrastructure for subsystems

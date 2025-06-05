@@ -1,5 +1,6 @@
 [deps]
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
 GraphDynamics = "bcd5d0fe-e6b7-4ef1-9848-780c183c7f4c"
 OrdinaryDiffEqTsit5 = "b1df2697-797e-41e3-8120-5422d3b24e4a"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"

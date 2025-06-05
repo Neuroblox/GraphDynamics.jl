@@ -14,16 +14,23 @@ function ConstructionBase.getproperties(s::SubsystemParams)
 end
 
 function ConstructionBase.setproperties(s::SubsystemParams{T}, patch::NamedTuple) where {T}
+    set_param_prop(s, patch; allow_typechange=false)
+end
+function set_param_prop(s::SubsystemParams{T}, key, val; allow_typechange=false) where {T}
+    set_param_prop(s, NamedTuple{(key,)}(val); allow_typechange)
+end
+function set_param_prop(s::SubsystemParams{T}, patch; allow_typechange=false) where {T}
     props = NamedTuple(s)
     props′ = merge(props, patch)
-    if typeof(props) != typeof(props′)
+    if typeof(props) != typeof(props′) && !allow_typechange
         param_setproperror(props, props′)
     end
     SubsystemParams{T}(props′)
 end
+
 @noinline function param_setproperror(props, props′)
     error("Type unstable change to subsystem params! Expected properties of type\n  $(typeof(props))\nbut got\n  $(typeof(props′))")
-end 
+end
 
 get_tag(::SubsystemParams{Name}) where {Name} = Name
 get_tag(::Type{<:SubsystemParams{Name}}) where {Name} = Name
@@ -36,6 +43,9 @@ function Base.setindex(p::SubsystemParams{Name}, val, param) where {Name}
 end
 function Base.convert(::Type{SubsystemParams{Name, NT}}, p::SubsystemParams{Name}) where {Name, NT}
     SubsystemParams{Name}(convert(NT, NamedTuple(p)))
+end
+@generated function promote_numeric_param_eltype(::Type{SubsystemParams{Name, NamedTuple{props, Tup}}}) where {Name, props, Tup}
+    :(promote_type($(param for param in Tup.parameters if param <: Number)...))
 end
 
 #------------------------------------------------------------
@@ -156,8 +166,9 @@ function Base.convert(::Type{Subsystem{Name, Eltype}}, s::Subsystem{Name}) where
 end
 
 @generated function promote_nt_type(::Type{NamedTuple{names, T1}},
-                                    ::Type{NamedTuple{names, T2}}) where {names, T1, T2}
-    NamedTuple{names, Tuple{(promote_type(T1.parameters[i], T2.parameters[i]) for i ∈ eachindex(names))...}}
+                         ::Type{NamedTuple{names, T2}}) where {names, T1, T2}
+    proms = [:(promote_type($(T1.parameters[i]), $(T2.parameters[i]))) for i in eachindex(names)]
+    :(NamedTuple{names, Tuple{$(proms...)}})
 end
 
 function Base.promote_rule(::Type{SubsystemParams{Name, NT1}},

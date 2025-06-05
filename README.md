@@ -39,8 +39,7 @@ function GraphDynamics.to_subsystem(p::Particle)
     # Use `name`, `m`, and `q` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Particle}(
-        ;name,
-        m,
+        ;m,
         q,
     )
     # Assemble a Subsystem
@@ -82,8 +81,7 @@ function GraphDynamics.to_subsystem(p::Oscillator)
     # Use `name`, `m`, `k`, `x₀`, and `q` as parameters
     # Every subsystem should have a unique name symbol.
     params = SubsystemParams{Oscillator}(
-        ;name,
-        m,
+        ;m,
         k,
         x₀,
         q,

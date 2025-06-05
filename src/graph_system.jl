@@ -60,8 +60,11 @@ end
 function system_wiring_rule!(g, node)
     add_node!(g, node)
 end
-function system_wiring_rule!(g, src, dst; conn, kwargs...)
-    add_connection!(g, src, dst; conn, kwargs...)
+function system_wiring_rule!(g, src, dst; kwargs...)
+    if !haskey(kwargs, :conn)
+        error("conn keyword argument not specified for connection between $src and $dst")
+    end
+    add_connection!(g, src, dst; conn=kwargs[:conn], kwargs...)
 end
 
 @kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, EVT, Ns, EP, SNM, PNM, CNM}
@@ -140,10 +143,10 @@ function PartitionedGraphSystem(g::GraphSystem)
 	@named n2 = SysType1(x=1, y=3)
 	@named n3 = SysType2(a=1, b=2, c=3)
     
-    add_connection!(g, n1, n2; conn=C1(1))
-    add_connection!(g, n2, n3; conn=C1(2))
-    add_connection!(g, n3, n1; conn=C2(3))
-    add_connection!(g, n3, n2; conn=C3(4))
+    add_connection!(g, n1, n2; conn=Conn1(1))
+    add_connection!(g, n2, n3; conn=Conn1(2))
+    add_connection!(g, n3, n1; conn=Conn2(3))
+    add_connection!(g, n3, n2; conn=Conn2(4))
     
     we'd get
     connection_matrix_1 = Conn1[⎡. 1⎤⎡.⎤
@@ -226,7 +229,7 @@ function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nod
                     end
                 end
                 rule_matrix = if isempty(conns)
-                    NotConnected()#{CT}(length(nodeks), length(nodeis))
+                    NotConnected{CT}() #{CT}(length(nodeks), length(nodeis))
                 else
                     sparse(ls, js, conns, length(nodeks), length(nodeis))
                 end
