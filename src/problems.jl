@@ -27,20 +27,10 @@ function  SciMLBase.ODEProblem(g::PartitionedGraphSystem, u0map, tspan, param_ma
     end
     tstops = vcat(tstops, nt.tstops)
     prob = ODEProblem{true, SciMLBase.FullSpecialize}(f, u, tspan, p; callback, tstops, kwargs...)
-    # let ukeys = map(first, u0map),
-    #     uvals = map(last, u0map)
-    #     setu(prob, ukeys)(prob, uvals)
-    # end
-    # let pkeys = map(first, param_map),
-    #     pvals = map(last, param_map)
-    #     setp(prob, pkeys)(prob, pvals)
-    # end
-     for (k, v) ∈ u0map
-         setu(prob, k)(prob, v)
-     end
-    for (k, v) ∈ param_map
-        setp(prob, k)(prob, v)
+    for (k, v) ∈ u0map
+        setu(prob, k)(prob, v)
     end
+    @reset prob.p = set_params!!(prob.p, param_map)
     prob
 end
 
@@ -58,19 +48,20 @@ function SciMLBase.SDEProblem(g::PartitionedGraphSystem, u0map, tspan, param_map
         uvals = map(last, u0map)
         setu(prob, ukeys)(prob, uvals)
     end
-    let pkeys = map(first, param_map),
-        pvals = map(last, param_map)
-        setp(prob, pkeys)(prob, pvals)
-    end
+    @reset prob.p = set_params!!(prob.p, param_map)
     prob
 end
 
-Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, EP<:NamedTuple}
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, NP, SNM, PNM, CNM, EP<:NamedTuple}
     params_partitioned::PP
     connection_matrices::CM
     scheduler::S
     partition_plan::PAP
     discrete_event_cache::DEC
+    names_partitioned::NP
+    state_namemap::SNM
+    param_namemap::PNM
+    compu_namemap::CNM
     extra_params::EP=(;)
 end
 
@@ -78,7 +69,11 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
     (; states_partitioned,
      params_partitioned,
      connection_matrices,
-     tstops) = g
+     tstops,
+     names_partitioned,
+     state_namemap,
+     param_namemap,
+     compu_namemap) = g
 
     total_eltype = let
         states_eltype = mapreduce(promote_type, states_partitioned) do v
@@ -87,12 +82,24 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
         u0map_eltype = mapreduce(promote_type, u0map; init=Union{}) do (k, v)
             typeof(v)
         end
-        promote_type(states_eltype, u0map_eltype)
+        numeric_params_eltype = mapreduce(promote_type, params_partitioned) do v
+            if isconcretetype(eltype(v))
+                promote_numeric_param_eltype(eltype(v))
+            else
+                mapreduce(promote_type, v) do params
+                    promote_numeric_param_eltype(typeof(params))
+                end
+            end
+        end
+        numeric_param_map_eltype = let numeric_params_from_map = [v for (_, v) in param_map if v isa Number]
+            mapreduce(typeof, promote_type, numeric_params_from_map; init=Union{})
+        end
+        promote_type(states_eltype, u0map_eltype, numeric_params_eltype, numeric_param_map_eltype)
     end
 
     re_eltype(s::SubsystemStates{T}) where {T} = convert(SubsystemStates{T, total_eltype}, s) 
     states_partitioned = map(states_partitioned) do v
-        if eltype(eltype(v)) <: total_eltype && eltype(eltype(v)) !== Union{}
+        if eltype(eltype(v)) <: total_eltype
             v
         else
             re_eltype.(v)
@@ -159,7 +166,11 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
                               connection_matrices,
                               scheduler,
                               partition_plan,
-                              discrete_event_cache)
+                              discrete_event_cache,
+                              names_partitioned,
+                              state_namemap,
+                              param_namemap,
+                              compu_namemap)
 
     (; f, u, tspan, p, callback, tstops)
 end
