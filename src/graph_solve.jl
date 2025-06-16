@@ -1,3 +1,42 @@
+"""
+    graph_ode!(du, u, p, t)
+
+Core ODE function for graph dynamics simulation.
+
+Computes derivatives for all subsystems in the graph, handling:
+1. Partitioning states by subsystem type
+2. Computing inputs from connections
+3. Applying subsystem differential equations
+
+# Arguments
+- `du`: Derivative vector (modified in-place)
+- `u`: Current state vector
+- `p`: Parameters with fields:
+  - `params_partitioned`: Parameters grouped by subsystem type
+  - `connection_matrices`: Connection structure
+  - `scheduler`: Parallelization scheduler
+  - `partition_plan`: Information for how to partition u and du into vectors of SubsystemStates grouped by subsystem type 
+- `t`: Current time
+
+# Flow Diagram
+```
+u (flat state vector)
+    │
+    ├─── partitioned ──→ states[Type1][1..n]
+    │                    states[Type2][1..m]
+    │                    states[Type3][1..k]
+    │
+    ├─── for each subsystem i of type T:
+    │    │
+    │    ├── calculate_inputs from connections
+    │    │   └── Σ connection_rule(src → dst)
+    │    │
+    │    └── subsystem_differential(sys, input, t)
+    │        └── writes to du[i]
+    │
+    └─── du (flat derivative vector)
+```
+"""
 #----------------------------------------------------------
 function graph_ode!(du,
                     u,
