@@ -153,8 +153,55 @@ struct Subsystem{T, Eltype, States, Params}
     params::SubsystemParams{T, Params}
 end
 
+"""
+    get_tag(subsystem::Subsystem{T}) -> T
+    get_tag(states::SubsystemStates{T}) -> T
+    get_tag(params::SubsystemParams{T}) -> T
+    get_tag(::Type{<:Subsystem{T}}) -> T
+
+Extract the type tag `T` from a subsystem or its components.
+
+The tag identifies the subsystem type and is used for dispatch and organization.
+
+# Examples
+```julia
+particle = Subsystem{Particle}(states=(x=1.0, v=0.0), params=(m=2.0,))
+get_tag(particle)  # returns Particle
+get_tag(typeof(particle))  # returns Particle
+```
+"""
 function get_tag end
+"""
+    get_params(subsystem::Subsystem) -> SubsystemParams
+
+Extract the parameters from a subsystem.
+
+Returns a `SubsystemParams` object containing the non-dynamical parameters
+(constants like mass, charge, spring constants, etc.) of the subsystem.
+
+# Example
+```julia
+sys = Subsystem{Oscillator}(states=(x=1.0, v=0.0), params=(k=2.0, m=1.0))
+params = get_params(sys)  # SubsystemParams{Oscillator}(k=2.0, m=1.0)
+params.k  # 2.0
+```
+"""
 function get_params end
+"""
+    get_states(subsystem::Subsystem) -> SubsystemStates
+
+Extract the state variables from a subsystem.
+
+Returns a `SubsystemStates` object containing the dynamical state variables
+(position, velocity, concentrations, etc.) that evolve over time.
+
+# Example
+```julia
+sys = Subsystem{Oscillator}(states=(x=1.0, v=0.0), params=(k=2.0, m=1.0))
+states = get_states(sys)  # SubsystemStates{Oscillator}(x=1.0, v=0.0)
+states.x  # 1.0
+```
+"""
 function get_states end
 
 """
@@ -220,6 +267,27 @@ defaults to false, but users may add methods to this function if they have subsy
 subsystem_differential_requires_inputs(::Type{T}) where {T} = true
 subsystem_differential_requires_inputs(::Subsystem{T}) where {T} = subsystem_differential_requires_inputs(T)
 
+"""
+    apply_subsystem_noise!(vstate, subsystem, t)
+
+Apply stochastic noise to a subsystem's state at time `t`.
+
+This function modifies the noise terms for a subsystem's stochastic differential equation.
+By default, it does nothing (no noise). Override this for stochastic subsystems.
+
+# Arguments
+- `vstate`: A view into the noise vector to be modified
+- `subsystem`: The `Subsystem` instance whose noise is being computed
+- `t`: Current time
+
+# Example
+```julia
+function GraphDynamics.apply_subsystem_noise!(vstate, sys::Subsystem{BrownianParticle}, t)
+    vstate[:x] = 0.0      # No noise in position
+    vstate[:v] = sys.σ    # White noise in velocity with amplitude σ
+end
+```
+"""
 function apply_subsystem_noise!(vstate, subsystem, t)
     nothing
 end
@@ -234,7 +302,56 @@ end
 
 function continuous_event_condition end
 function apply_continuous_event! end
+"""
+    discrete_event_condition(subsystem, t, F)
+    discrete_event_condition(connection_rule, t)
+
+Check if a discrete event should trigger at time `t`.
+
+Returns `true` if the event should trigger, `false` otherwise.
+
+# Arguments
+- `subsystem`: The `Subsystem` to check for event conditions
+- `t`: Current time
+- `F`: A `ForeachConnectedSubsystem` callable for accessing connected subsystems
+- `connection_rule`: For connection events, the `ConnectionRule` to check
+
+# Implementation
+Override this function for subsystems or connections with discrete events:
+```julia
+function GraphDynamics.discrete_event_condition(sys::Subsystem{Pendulum}, t, F)
+    # Trigger event every 0.1 time units
+    return t % 0.1 ≈ 0
+end
+```
+"""
 function discrete_event_condition end
+"""
+    apply_discrete_event!(integrator, sview, pview, subsystem, F[, input])
+    apply_discrete_event!(integrator, sview_src, pview_src, sview_dst, pview_dst, 
+                         connection_rule, sys_src, sys_dst[, input_src, input_dst])
+
+Apply a discrete event to modify subsystem states or parameters.
+
+This function is called when `discrete_event_condition` returns `true`.
+
+# Arguments
+- `integrator`: The ODE/SDE integrator
+- `sview`/`pview`: Views into states/params to be modified
+- `subsystem`: The subsystem experiencing the event
+- `F`: `ForeachConnectedSubsystem` for accessing connected subsystems
+- `input`: Optional input from connected subsystems
+- For connection events: views and systems for both source and destination
+
+# Example
+```julia
+function GraphDynamics.apply_discrete_event!(integrator, sview, pview, 
+                                            sys::Subsystem{Ball}, F)
+    # Bounce: reverse velocity
+    sview[:v] = -sys.restitution * sview[:v]
+end
+```
+"""
 function apply_discrete_event! end
 
 
@@ -308,6 +425,44 @@ Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 struct NotConnected{CR <: ConnectionRule} end
 Base.getindex(::NotConnected{CR}, inds...) where {CR} = zero(CR)
 Base.copy(c::NotConnected) = c
+"""
+    ConnectionMatrix{N, CR, Tup}
+
+A block matrix representing connections between N different subsystem types using
+connection rules of type `CR`.
+
+# Structure
+The matrix is organized as blocks where `data[i][j]` contains connections from
+subsystems of type `i` to subsystems of type `j`:
+
+```
+        dst type 1    dst type 2    dst type 3
+       ┌─────────────┬─────────────┬─────────────┐
+type 1 │ data[1][1]  │ data[1][2]  │ data[1][3]  │
+       ├─────────────┼─────────────┼─────────────┤
+type 2 │ data[2][1]  │ data[2][2]  │ data[2][3]  │ src
+       ├─────────────┼─────────────┼─────────────┤
+type 3 │ data[3][1]  │ data[3][2]  │ data[3][3]  │
+       └─────────────┴─────────────┴─────────────┘
+```
+
+Each block is either:
+- A sparse matrix of `ConnectionRule` objects
+- `NotConnected{CR}()` if no connections exist
+
+# Example
+```julia
+# Block [2,1] has Spring connections from type 2 → type 1
+# Block [1,2] has no connections
+ConnectionMatrix with Spring connections:
+[1,1]: 2×2 sparse matrix
+[1,2]: NotConnected
+[2,1]: 3×2 sparse matrix
+[2,2]: NotConnected
+```
+
+See also: [`ConnectionMatrices`](@ref), [`NotConnected`](@ref)
+"""
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected{CR}, AbstractMatrix{CR}}}}}
     data::Tup
 end
@@ -320,6 +475,32 @@ function Base.copy(c::ConnectionMatrix)
     ConnectionMatrix(data′)
 end
 
+"""
+    ConnectionMatrices{NConn, Tup}
+
+Container for multiple connection matrices, each representing a different connection type.
+
+Stores `NConn` different `ConnectionMatrix` objects, allowing heterogeneous connection
+types in the same graph system.
+
+# Structure
+```
+ConnectionMatrices
+├── matrices[1]: ConnectionMatrix for connection type 1
+├── matrices[2]: ConnectionMatrix for connection type 2
+└── matrices[...]: Additional connection matrices
+```
+
+# Example
+For a system with springs and dampers:
+```
+ConnectionMatrices with 2 connection types:
+[1] Spring connections
+[2] Damper connections
+```
+
+See also: [`ConnectionMatrix`](@ref)
+"""
 struct ConnectionMatrices{NConn, Tup <: NTuple{NConn, ConnectionMatrix}}
     matrices::Tup
 end
