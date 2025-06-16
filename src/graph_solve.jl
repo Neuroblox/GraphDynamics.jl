@@ -15,7 +15,7 @@ Computes derivatives for all subsystems in the graph, handling:
   - `params_partitioned`: Parameters grouped by subsystem type
   - `connection_matrices`: Connection structure
   - `scheduler`: Parallelization scheduler
-  - `partition_plan`: State vector partitioning info
+  - `partition_plan`: Information for how to partition u and du into vectors of SubsystemStates grouped by subsystem type 
 - `t`: Current time
 
 # Flow Diagram
