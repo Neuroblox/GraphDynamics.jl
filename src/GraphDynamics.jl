@@ -283,7 +283,7 @@ By default, it does nothing (no noise). Override this for stochastic subsystems.
 # Example
 ```julia
 function GraphDynamics.apply_subsystem_noise!(vstate, sys::Subsystem{BrownianParticle}, t)
-    vstate[:x] = 0.0      # No noise in position
+    # No noise in position, so we don't modify vstate[:x]
     vstate[:v] = sys.σ    # White noise in velocity with amplitude σ
 end
 ```
