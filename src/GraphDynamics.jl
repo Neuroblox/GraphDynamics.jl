@@ -302,29 +302,6 @@ end
 
 function continuous_event_condition end
 function apply_continuous_event! end
-"""
-    discrete_event_condition(subsystem, t, F)
-    discrete_event_condition(connection_rule, t)
-
-Check if a discrete event should trigger at time `t`.
-
-Returns `true` if the event should trigger, `false` otherwise.
-
-# Arguments
-- `subsystem`: The `Subsystem` to check for event conditions
-- `t`: Current time
-- `F`: A `ForeachConnectedSubsystem` callable for accessing connected subsystems
-- `connection_rule`: For connection events, the `ConnectionRule` to check
-
-# Implementation
-Override this function for subsystems or connections with discrete events:
-```julia
-function GraphDynamics.discrete_event_condition(sys::Subsystem{Pendulum}, t, F)
-    # Trigger event every 0.1 time units
-    return t % 0.1 ≈ 0
-end
-```
-"""
 function discrete_event_condition end
 """
     apply_discrete_event!(integrator, sview, pview, subsystem, F[, input])
