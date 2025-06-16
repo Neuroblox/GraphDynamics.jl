@@ -402,44 +402,6 @@ Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 struct NotConnected{CR <: ConnectionRule} end
 Base.getindex(::NotConnected{CR}, inds...) where {CR} = zero(CR)
 Base.copy(c::NotConnected) = c
-"""
-    ConnectionMatrix{N, CR, Tup}
-
-A block matrix representing connections between N different subsystem types using
-connection rules of type `CR`.
-
-# Structure
-The matrix is organized as blocks where `data[i][j]` contains connections from
-subsystems of type `i` to subsystems of type `j`:
-
-```
-        dst type 1    dst type 2    dst type 3
-       ┌─────────────┬─────────────┬─────────────┐
-type 1 │ data[1][1]  │ data[1][2]  │ data[1][3]  │
-       ├─────────────┼─────────────┼─────────────┤
-type 2 │ data[2][1]  │ data[2][2]  │ data[2][3]  │ src
-       ├─────────────┼─────────────┼─────────────┤
-type 3 │ data[3][1]  │ data[3][2]  │ data[3][3]  │
-       └─────────────┴─────────────┴─────────────┘
-```
-
-Each block is either:
-- A sparse matrix of `ConnectionRule` objects
-- `NotConnected{CR}()` if no connections exist
-
-# Example
-```julia
-# Block [2,1] has Spring connections from type 2 → type 1
-# Block [1,2] has no connections
-ConnectionMatrix with Spring connections:
-[1,1]: 2×2 sparse matrix
-[1,2]: NotConnected
-[2,1]: 3×2 sparse matrix
-[2,2]: NotConnected
-```
-
-See also: [`ConnectionMatrices`](@ref), [`NotConnected`](@ref)
-"""
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected{CR}, AbstractMatrix{CR}}}}}
     data::Tup
 end
