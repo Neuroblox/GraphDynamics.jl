@@ -414,32 +414,6 @@ function Base.copy(c::ConnectionMatrix)
     ConnectionMatrix(data′)
 end
 
-"""
-    ConnectionMatrices{NConn, Tup}
-
-Container for multiple connection matrices, each representing a different connection type.
-
-Stores `NConn` different `ConnectionMatrix` objects, allowing heterogeneous connection
-types in the same graph system.
-
-# Structure
-```
-ConnectionMatrices
-├── matrices[1]: ConnectionMatrix for connection type 1
-├── matrices[2]: ConnectionMatrix for connection type 2
-└── matrices[...]: Additional connection matrices
-```
-
-# Example
-For a system with springs and dampers:
-```
-ConnectionMatrices with 2 connection types:
-[1] Spring connections
-[2] Damper connections
-```
-
-See also: [`ConnectionMatrix`](@ref)
-"""
 struct ConnectionMatrices{NConn, Tup <: NTuple{NConn, ConnectionMatrix}}
     matrices::Tup
 end
