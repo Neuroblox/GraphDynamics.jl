@@ -154,10 +154,10 @@ struct Subsystem{T, Eltype, States, Params}
 end
 
 """
-    get_tag(subsystem::Subsystem{T}) -> T
-    get_tag(states::SubsystemStates{T}) -> T
-    get_tag(params::SubsystemParams{T}) -> T
-    get_tag(::Type{<:Subsystem{T}}) -> T
+    get_tag(subsystem::Subsystem{T}) = T
+    get_tag(states::SubsystemStates{T}) = T
+    get_tag(params::SubsystemParams{T}) = T
+    get_tag(::Type{<:Subsystem{T}}) = T
 
 Extract the type tag `T` from a subsystem or its components.
 
