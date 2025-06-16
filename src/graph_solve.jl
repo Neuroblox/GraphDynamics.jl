@@ -36,13 +36,6 @@ u (flat state vector)
     │
     └─── du (flat derivative vector)
 ```
-
-# Example
-Called internally by ODE solvers:
-```julia
-prob = ODEProblem(graph_ode!, u0, tspan, p)
-sol = solve(prob)
-```
 """
 #----------------------------------------------------------
 function graph_ode!(du,
