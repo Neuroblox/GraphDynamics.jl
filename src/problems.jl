@@ -52,17 +52,45 @@ function SciMLBase.SDEProblem(g::PartitionedGraphSystem, u0map, tspan, param_map
     prob
 end
 
-Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, NP, SNM, PNM, CNM, EP<:NamedTuple}
+Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, NP, CONM, SNM, PNM, CNM, EP<:NamedTuple}
     params_partitioned::PP
     connection_matrices::CM
     scheduler::S
     partition_plan::PAP
     discrete_event_cache::DEC
     names_partitioned::NP
+    connection_namemap::CONM
     state_namemap::SNM
     param_namemap::PNM
     compu_namemap::CNM
     extra_params::EP=(;)
+end
+
+function Base.copy(p::GraphSystemParameters)
+    copy.(p.params_partitioned)
+    copy(p.connection_matrices)
+    p.scheduler
+    p.partition_plan
+    copy.(p.discrete_event_cache)
+    copy.(p.names_partitioned)
+    copy(p.connection_namemap)
+    copy(p.state_namemap)
+    copy(p.param_namemap)
+    copy(p.compu_namemap)
+    map(copy, p.extra_params)
+    GraphSystemParameters(
+        copy.(p.params_partitioned),
+        copy(p.connection_matrices),
+        p.scheduler,
+        (p.partition_plan),
+        copy.(p.discrete_event_cache),
+        copy.(p.names_partitioned),
+        copy(p.connection_namemap),
+        copy(p.state_namemap),
+        copy(p.param_namemap),
+        copy(p.compu_namemap),
+        map(copy, p.extra_params)
+    )
 end
 
 function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map, global_events)
@@ -71,6 +99,7 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
      connection_matrices,
      tstops,
      names_partitioned,
+     connection_namemap,
      state_namemap,
      param_namemap,
      compu_namemap) = g
@@ -168,6 +197,7 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
                               partition_plan,
                               discrete_event_cache,
                               names_partitioned,
+                              connection_namemap,
                               state_namemap,
                               param_namemap,
                               compu_namemap)

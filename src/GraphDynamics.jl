@@ -38,6 +38,11 @@ end
 
     system_wiring_rule!,
     to_subsystem,
+
+    get_name,
+    connection_property_namemap,
+
+    make_connection_matrices
 )
 
 export
@@ -59,7 +64,8 @@ export
     add_connection!,
     add_node!,
     nodes,
-    has_connection
+    has_connection,
+    delete_connection!
 
 
 #----------------------------------------------------------
@@ -97,10 +103,12 @@ using SymbolicIndexingInterface:
 using Accessors:
     Accessors,
     @set,
-    @reset
+    @reset,
+    @insert
 
 using ConstructionBase:
-    ConstructionBase
+    ConstructionBase,
+    setproperties
 
 using SparseArrays:
     SparseArrays,
@@ -109,7 +117,9 @@ using SparseArrays:
     findnz,
     rowvals,
     nzrange,
-    sparse
+    sparse,
+    spzeros,
+    dropzeros!
 
 using OrderedCollections:
     OrderedCollections,
@@ -137,10 +147,6 @@ end
 A `Subsystem` struct describes a complete subcomponent to an `GraphSystem`. This stores a `SubsystemStates` to describe the continuous dynamical state of the subsystem, and a `GraphSystemParams` which describes various non-dynamical parameters of the subsystem. The type parameter `T` is the subsystem's \"tag\" which labels what sort of subsystem it is.
 
 See also `subsystem_differential`, `SubsystemStates`, `SubsystemParams`.
-
-For example, if we wanted to describe a system where one sub-component is a billiard ball,
-
-
 """
 struct Subsystem{T, Eltype, States, Params}
     states::SubsystemStates{T, Eltype, States}
@@ -230,7 +236,6 @@ function continuous_event_condition end
 function apply_continuous_event! end
 function discrete_event_condition end
 function apply_discrete_event! end
-
 
 
 """
@@ -325,6 +330,92 @@ Base.getindex(m::ConnectionMatrix, ::Val{i}, ::Val{j}) where {i, j} = m.data[i][
 Base.length(m::ConnectionMatrices) = length(m.matrices)
 Base.size(m::ConnectionMatrix{N}) where {N} = (N, N)
 Base.copy(c::ConnectionMatrices) = ConnectionMatrices(map(copy, c.matrices))
+rule_type(::ConnectionMatrix{N, CR}) where {N, CR} = CR
+
+
+"""
+    get_name(x)::Symbol
+
+Get the symbolic name of an input node before conversion to `Subsystem` via `to_subsystem`. Overload this function for
+your custom types
+"""
+get_name(x)::Symbol = x.name
+
+"""
+    to_subsystem(x)::Subsystem
+
+Implement this function to convert your custom node types to `GraphDynamics.Subsystem` objects.
+
+____
+
+Example
+
+```julia
+using GraphDynamics
+using Base: @kwdef
+@kwdef struct Particle
+    name::Symbol 
+    m::Float64
+    q::Float64=1.0
+    x_init::Float64 = 0.0
+    v_init::Float64 = 0.0
+end
+function GraphDynamics.to_subsystem(p::Particle)
+    # Unpack the fields of the Particle
+    (;name, m, q, x_init, v_init) = p
+    # Set the initial states to `x_init` and `v_init`
+    states = SubsystemStates{Particle}(;
+        x = x_init,
+        v = v_init,
+    )
+    # Use `name`, `m`, and `q` as parameters
+    # Every subsystem should have a unique name symbol.
+    params = SubsystemParams{Particle}(
+        ;m,
+        q,
+    )
+    # Assemble a Subsystem
+    Subsystem(states, params)
+end
+```
+"""
+function to_subsystem end
+to_subsystem(sys::Subsystem) = sys
+to_subsystem(::T) where {T} = error("Objects of type $T do not appear to be supported by GraphDynamics. This object must have custom `to_subsystem` method, `subsystem_differential`, and `initialize_inputs` methods.")
+
+
+"""
+    connection_property_namemap(conn, name_src, name_dst) :: NamedTuple
+
+Add methods to this function for your custom connection types in order to support symbolic replacement and setting of connections.
+
+This function should take in a connection instance `conn`, and the name of the source and destination nodes which `conn` connects,
+and then should return a `NamedTuple` whose keys are property names of the connection, and the values are generated `Symbol`s.
+
+
+For a connection rule of the form
+```julia
+struct Coulomb{T} <: ConnectionRule
+    fac::T
+end
+```
+the default implementation would give
+```julia
+
+julia> GraphDynamics.connection_property_namemap(Coulomb(1.0), :p1, :p2)
+(:fac_Coulomb_p1_p2,)
+```
+but one can modify this function to follow alternative naming schemes as desired.
+
+The naming scheme determined by this function is used through SymbolicIndexingInterface.jl to
+modify or fetch connection values from SciML problems / solutions constructed through GraphDynamics. 
+"""
+function connection_property_namemap(conn::CR, name_src, name_dst) where CR
+    pnames = propertynames(conn)
+    vals = map(name -> Symbol(name, :_, nameof(CR), :_, name_src, :_, name_dst), propertynames(conn))
+    NamedTuple{pnames}(vals)
+end
+
 
 #----------------------------------------------------------
 # Infrastructure for subsystems
