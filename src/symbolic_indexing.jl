@@ -249,8 +249,7 @@ function set_params!!(buffer::GraphSystemParameters, param_map)
         elseif haskey(connection_namemap, key)
             buffer = set_param!!(buffer, key, connection_namemap[key], val)
         else
-            @info "" keys(connection_namemap)
-            error("Key $key does not correspond to a known parameter")
+            error("Key $key does not correspond to a known parameter. ")
         end
     end
     buffer

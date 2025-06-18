@@ -125,6 +125,9 @@ using OrderedCollections:
     OrderedCollections,
     OrderedDict
 
+using DiffEqBase:
+    DiffEqBase,
+    anyeltypedual
 
 #----------------------------------------------------------
 # Random utils
