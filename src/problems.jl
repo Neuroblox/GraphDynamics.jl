@@ -44,9 +44,8 @@ function SciMLBase.SDEProblem(g::PartitionedGraphSystem, u0map, tspan, param_map
     end
     noise_rate_prototype = nothing # this'll need to change once we support correlated noise
     prob = SDEProblem(f, graph_noise!, u, tspan, p; callback, noise_rate_prototype, tstops = vcat(tstops, nt.tstops), kwargs...)
-    let ukeys = map(first, u0map),
-        uvals = map(last, u0map)
-        setu(prob, ukeys)(prob, uvals)
+    for (k, v) ∈ u0map
+        setu(prob, k)(prob, v)
     end
     @reset prob.p = set_params!!(prob.p, param_map)
     prob
@@ -67,17 +66,6 @@ Base.@kwdef struct GraphSystemParameters{PP, CM, S, PAP, DEC, NP, CONM, SNM, PNM
 end
 
 function Base.copy(p::GraphSystemParameters)
-    copy.(p.params_partitioned)
-    copy(p.connection_matrices)
-    p.scheduler
-    p.partition_plan
-    copy.(p.discrete_event_cache)
-    copy.(p.names_partitioned)
-    copy(p.connection_namemap)
-    copy(p.state_namemap)
-    copy(p.param_namemap)
-    copy(p.compu_namemap)
-    map(copy, p.extra_params)
     GraphSystemParameters(
         copy.(p.params_partitioned),
         copy(p.connection_matrices),
@@ -91,6 +79,16 @@ function Base.copy(p::GraphSystemParameters)
         copy(p.compu_namemap),
         map(copy, p.extra_params)
     )
+end
+
+function DiffEqBase.anyeltypedual(p::GraphSystemParameters, ::Type{Val{counter}}) where {counter}
+    anyeltypedual((p.params_partitioned, p.connection_matrices))
+end
+function DiffEqBase.anyeltypedual(p::ConnectionMatrices, ::Type{Val{counter}}) where {counter}
+    anyeltypedual(p.matrices)
+end
+function DiffEqBase.anyeltypedual(p::ConnectionMatrix, ::Type{Val{counter}}) where {counter}
+    anyeltypedual(p.data)
 end
 
 function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete, u0map, param_map, global_events)

@@ -25,4 +25,12 @@ function SymbolicIndexingInterface.is_independent_variable(sys::PartitionedGraph
     SymbolicIndexingInterface.is_independent_variable(sys, tosymbol(var; escape=false))
 end
 
+function SymbolicIndexingInterface.is_observed(sys::PartitionedGraphSystem, var::Num)
+    SymbolicIndexingInterface.is_observed(sys, tosymbol(var; escape=false))
+end
+
+function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, var::Num)
+    SymbolicIndexingInterface.observed(sys, tosymbol(var; escape=false))
+end
+
 end
