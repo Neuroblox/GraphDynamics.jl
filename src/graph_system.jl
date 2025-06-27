@@ -136,7 +136,7 @@ function PartitionedGraphSystem(g::GraphSystem)
     end
     states_partitioned = (Tuple ∘ map)(v -> map(get_states, v),  subsystems_partitioned)
     params_partitioned = (Tuple ∘ map)(v -> map(get_params, v),  subsystems_partitioned)
-    names_partitioned  = (Tuple ∘ map)(v -> map(x -> convert(Symbol, x.name), v), nodes_partitioned)
+    names_partitioned  = (Tuple ∘ map)(v -> map(x -> convert(Symbol, get_name(x)), v), nodes_partitioned)
 
     #==================================================================================================
     Create a ConnectionMatrices object containing structured information about how each lowest level nodes 
