@@ -102,6 +102,17 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
      param_namemap,
      compu_namemap) = g
 
+    params_partitioned = map(params_partitioned) do v
+        if !isconcretetype(eltype(v))
+            unique_types = unique(typeof.(v))
+            @debug "Non-concrete param types. Promoting" unique_types
+            T = mapreduce(typeof, promote_type, v)
+            convert.(T, v)
+        else
+            v
+        end
+    end
+    
     total_eltype = let
         states_eltype = mapreduce(promote_type, states_partitioned) do v
             eltype(eltype(v))
