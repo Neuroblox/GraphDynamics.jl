@@ -402,7 +402,7 @@ abstract type ConnectionRule end
 (c::ConnectionRule)(src, dst, t) = c(src, dst)
 Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 
-struct NotConnected{CR <: ConnectionRule} end
+struct NotConnected{CR} end
 Base.getindex(::NotConnected{CR}, inds...) where {CR} = zero(CR)
 Base.copy(c::NotConnected) = c
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected{CR}, AbstractMatrix{CR}}}}}
