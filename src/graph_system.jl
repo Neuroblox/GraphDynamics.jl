@@ -77,18 +77,18 @@ function system_wiring_rule!(g, src, dst; kwargs...)
 end
 
 @kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, EVT, Ns, CONM, SNM, PNM, CNM, EP}
-    is_stochastic::Bool
-    graph::GraphSystem = GraphSystem()
-    flat_graph::GraphSystem = GraphSystem()
+    graph::Union{Nothing, GraphSystem} = nothing
+    flat_graph::Union{Nothing, GraphSystem} = nothing
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
     tstops::EVT = Float64[]
     names_partitioned::Ns
-    connection_namemap::CONM
+    connection_namemap::CONM = make_connection_namemape(names_partitioned, connection_matrices)
     state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
     param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
     compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
+    is_stochastic::Bool=any(v -> any(isstochastic, v), states_partitioned)
     extra_params::EP = (;)
 end
 
@@ -264,5 +264,31 @@ function check_no_double_connections(g, conn_key)
                 end
             end
         end
+    end
+end
+
+@generated function make_connection_namemape(names_partitioned::NTuple{Len, Any},
+                                             connection_matrices::ConnectionMatrices{NConn}) where {Len, NConn}
+    quote 
+        connection_namemap = OrderedDict{Symbol, ConnectionIndex}()
+        @nexprs $Len k -> begin
+            @nexprs $Len i -> begin
+                @nexprs $NConn nc -> begin
+                    M = connection_matrices[nc].data[k][i]
+                    if !(M isa NotConnected)
+                        for j ∈ eachindex(names_partitioned)
+                            for (l, conn) ∈ maybe_sparse_enumerate_col(M, j)
+                                name_kl = names_partitioned[k][l]
+                                name_ij = names_partitioned[i][j]
+                                for (prop, name) ∈ pairs(connection_property_namemap(conn, name_kl, name_ij))
+                                    connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, prop)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        connection_namemap
     end
 end
