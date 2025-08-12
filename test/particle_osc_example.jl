@@ -231,3 +231,22 @@ function sensitivity_test()
         end
     end
 end
+
+using Mooncake, DifferentiationInterface, Enzyme, SciMLSensitivity
+
+function autodiff_test()
+    function f(y::Array{Float64}, u0::Array{Float64}; vjp = EnzymeVJP())
+        tspan = (0.0, 3.0)
+        prob = particle_osc_prob(;x1=1.0, x2=-1.0, m=3.0, mp1=1.0, kc_p1_p2=1.0, tspan = (0.0, 10.0), alg=Tsit5())
+        sol = DiffEqBase.solve(prob, Tsit5(), saveat = 0.:0.5:10., sensealg = GaussAdjoint(; autojacvec = vjp))
+        y .= sol[1,:]
+        return nothing
+    end;
+    
+    d_u0 = zeros(6)
+    u0 = [1., 0., 0., -1., 0., 0.]
+    dy = zeros(21)
+    y = zeros(21)
+    
+    Enzyme.autodiff(Reverse, f, Duplicated(y, dy), Duplicated(u0, d_u0))
+end

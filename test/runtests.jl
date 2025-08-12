@@ -5,3 +5,7 @@ using SafeTestsets
     solution_solve_test()
     sensitivity_test()
 end
+
+@safetestset "Autodiff" begin
+    include("autodiff.jl")
+end

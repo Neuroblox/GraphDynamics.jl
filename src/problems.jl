@@ -213,3 +213,41 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
 
     (; f, u, tspan, p, callback, tstops)
 end
+
+SciMLStructures.isscimlstructure(::GraphSystemParameters) = true
+SciMLStructures.ismutablescimlstructure(::GraphSystemParameters) = false
+SciMLStructures.hasportion(::Tunable, ::GraphSystemParameters) = true
+
+function SciMLStructures.canonicalize(::Tunable, p::GraphSystemParameters)
+    paramvals = map(Iterators.flatten(p.params_partitioned)) do paramobj
+        values(NamedTuple(params))
+    end
+    buffer = reduce(vcat(paramvals))
+
+    repack = let p = p
+        function repack(newbuffer)
+            replace(Tunable(), p, newbuffer)
+        end
+    end
+    buffer, repack, false
+end
+
+function SciMLStructures.replace(::Tunable, p::GraphSystemParameters, newbuffer)
+    paramobjs = Iterators.flatten(p.params_partitioned)
+    N = sum([length(NamedTuple(obj)) for obj in paramobjs])
+    @assert length(newbuffer) == N
+
+    idx = 1
+    new_params = map(paramobjs) do paramobj
+        syms = keys(NamedTuple(paramobj))
+        newparams = typeof(paramobj)(; (syms .=> view(newbuffer, idx:idx+length(syms)-1))...)
+        idx += length(syms)
+    end
+    param_types = (unique ∘ imap)(typeof, new_params)
+    params_partitioned = Tuple(map(param_types) do T
+        filter(new_params) do p
+            p isa T
+        end
+    end)
+    @set p.params_partitioned = params_partitioned
+end
