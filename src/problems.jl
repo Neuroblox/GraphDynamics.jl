@@ -232,14 +232,13 @@ function SciMLStructures.canonicalize(::Tunable, p::GraphSystemParameters)
     buffer, repack, false
 end
 
-function SciMLStructures.replace(::Tunable, p::GraphSystemParameters, newbuffer)
+function SciMLStructures.replace(::Tunable, p::GraphSystemParameters, newbuffer)::GraphSystemParameters
     paramobjs = Iterators.flatten(p.params_partitioned)
     N = sum([length(NamedTuple(obj)) for obj in paramobjs])
     @assert length(newbuffer) == N
 
     idx = 1
     new_params = map(paramobjs) do paramobj
-        Main.xx[] = paramobj
         syms = keys(NamedTuple(paramobj))
         newparams = SubsystemParams{get_tag(paramobj)}(; (syms .=> view(newbuffer, idx:idx+length(syms)-1))...)
         idx += length(syms)
