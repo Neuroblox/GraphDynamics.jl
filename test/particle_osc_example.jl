@@ -241,12 +241,12 @@ function autodiff_test()
         sol = DiffEqBase.solve(prob, Tsit5(), saveat = 0.:0.5:10., sensealg = GaussAdjoint(; autojacvec = vjp))
         y .= sol[1,:]
         return nothing
-    end;
+    end
     
     d_u0 = zeros(6)
-    u0 = [1., 0., 0., -1., 0., 0.]
+    u0 = [1., 0., -1.0, 0., 0., 1.0]
     dy = zeros(21)
     y = zeros(21)
-    
-    Enzyme.autodiff(Reverse, f, Duplicated(y, dy), Duplicated(u0, d_u0))
+    @test_nowarn f(y, u0)
+    @test_nowarn f(y, u0, vjp = SciMLSensitivity.MooncakeVJP())
 end

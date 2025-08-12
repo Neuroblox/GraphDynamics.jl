@@ -220,12 +220,12 @@ SciMLStructures.hasportion(::Tunable, ::GraphSystemParameters) = true
 
 function SciMLStructures.canonicalize(::Tunable, p::GraphSystemParameters)
     paramvals = map(Iterators.flatten(p.params_partitioned)) do paramobj
-        values(NamedTuple(params))
+        collect(values(NamedTuple(paramobj)))
     end
-    buffer = reduce(vcat(paramvals))
+    buffer = reduce(vcat, paramvals)
 
     repack = let p = p
-        function repack(newbuffer)
+        function (newbuffer)
             replace(Tunable(), p, newbuffer)
         end
     end
@@ -239,9 +239,11 @@ function SciMLStructures.replace(::Tunable, p::GraphSystemParameters, newbuffer)
 
     idx = 1
     new_params = map(paramobjs) do paramobj
+        Main.xx[] = paramobj
         syms = keys(NamedTuple(paramobj))
-        newparams = typeof(paramobj)(; (syms .=> view(newbuffer, idx:idx+length(syms)-1))...)
+        newparams = SubsystemParams{get_tag(paramobj)}(; (syms .=> view(newbuffer, idx:idx+length(syms)-1))...)
         idx += length(syms)
+        newparams
     end
     param_types = (unique ∘ imap)(typeof, new_params)
     params_partitioned = Tuple(map(param_types) do T
