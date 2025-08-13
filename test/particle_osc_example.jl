@@ -236,31 +236,20 @@ using Mooncake, DifferentiationInterface, Enzyme, SciMLSensitivity
 import SciMLStructures as SS
 
 function autodiff_test()
-    function sum_test(p; vjp = EnzymeVJP())::Float64
+    function sum_test(p; vjp = EnzymeVJP())
         prob = particle_osc_prob(;x1=1.0, x2=-1.0, m=3.0, mp1=1.0, kc_p1_p2=1.0, tspan = (0.0, 10.0), alg=Tsit5())
-        newp = SS.replace(SS.Tunable(), prob.p, p)
+        buffer, repack, b = SS.canonicalize(SS.Tunable(), prob.p)
+        newp = repack(p)
         prob = remake(prob; p = newp)
+
         sol = DiffEqBase.solve(prob, Tsit5(), saveat = 0.:0.5:10., sensealg = GaussAdjoint(; autojacvec = vjp))
         return sum(sol.u[end])
     end
 
-    prob = particle_osc_prob(;x1=1.0, x2=-1.0, m=3.0, mp1=1.0, kc_p1_p2=1.0, tspan = (0.0, 10.0), alg=Tsit5())
-    params = SS.canonicalize(SS.Tunable(), prob.p)[1]
-    u0 = [1., 0., -1.0, 0., 0., 1.0]
-
+    params = [1., 1., 2., 1., 3., 1., 0.]
     @test_nowarn sum_test(params)
     @test_nowarn sum_test(params, vjp = SciMLSensitivity.MooncakeVJP())
 
-    # ForwardDiff
-    ForwardDiff.gradient(sum_test, params)
-    value_and_gradient(sum_test, AutoEnzyme(), params)
-    
-    # Enzyme
-    dp = zeros(7)
-    Enzyme.autodiff(Reverse, sum_test, params, dp)
-
-    # Mooncake
-    backend = AutoMooncake(; config=nothing)
-    prep = prepare_gradient(sum_test, backend, params)
-    Mooncake.gradient(sum_test, prep, backend, params)
+    @test_nowarn value_and_gradient(sum_test, AutoEnzyme(), params)
+    @test_nowarn value_and_gradient(sum_test, AutoMooncake(), params)
 end
