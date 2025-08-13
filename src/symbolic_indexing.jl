@@ -192,6 +192,17 @@ function SymbolicIndexingInterface.is_observed(sys::PartitionedGraphSystem, sym)
     haskey(sys.compu_namemap, sym)
 end
 
+function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, syms::Union{Vector{Symbol}, Tuple{Symbol}})
+    fs = map(syms) do sym
+        observed(sys, sym)
+    end
+    obs = if syms isa Tuple
+        (u, p, t) -> Tuple([f(u, p, t) for f in fs])
+    else
+        (u, p, t) -> [f(u, p, t) for f in fs]
+    end
+end
+
 function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, sym)
     (; tup_index, v_index, prop, requires_inputs) = sys.compu_namemap[sym]
     
