@@ -33,4 +33,8 @@ function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, var::Nu
     SymbolicIndexingInterface.observed(sys, tosymbol(var; escape=false))
 end
 
+function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, vars::Union{Vector{Num}, Tuple{Vararg{Num}}})
+    SymbolicIndexingInterface.observed(sys, tosymbol.(vars; escape=false))
+end
+
 end
