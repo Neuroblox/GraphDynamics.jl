@@ -193,11 +193,10 @@ function SymbolicIndexingInterface.is_observed(sys::PartitionedGraphSystem, sym)
 end
 
 function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, syms::Union{Vector{Symbol}, Tuple{Vararg{Symbol}}})
-    function (u, p, t)
-        map(syms) do sym
-            observed(sys, sym)(u, p, t)
-        end
+    fs = map(syms) do sym
+        observed(sys, sym)
     end
+    obs = map(f -> f(u, p, t), fs)
 end
 
 function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, sym)

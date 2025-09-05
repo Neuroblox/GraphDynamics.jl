@@ -1,5 +1,4 @@
-include("particle_osc_example.jl")
-using SymbolicIndexingInterface
+include("test/particle_osc_example.jl")
 
 @testset "Symbolic Indexing of Vectors" begin
     sol = solve_particle_osc(x1=1.0, x2=-1.0)
