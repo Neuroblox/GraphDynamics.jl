@@ -95,9 +95,14 @@ function Base.setindex!(u::AbstractArray, val, idx::StateIndex)
     setindex!(u, val, idx.idx)
 end
 
+function Base.checkindex(::Type{Bool}, inds::AbstractUnitRange, i::StateIndex)
+    checkindex(Bool, inds, i.idx)
+end
+
 function Base.getindex(u::GraphSystemParameters, p::ParamIndex)
     u.params_partitioned[p]
 end
+
 function Base.getindex(u::Tuple, (;tup_index, v_index, prop)::ParamIndex)
     getproperty(u[tup_index][v_index], prop)
 end
@@ -155,7 +160,7 @@ function SymbolicIndexingInterface.parameter_index(g::PartitionedGraphSystem, sy
 end
 
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters)
-    p
+    p.params_partitioned
 end
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i::ParamIndex)
     p.params_partitioned[i]
