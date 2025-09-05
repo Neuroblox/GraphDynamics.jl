@@ -192,7 +192,7 @@ function SymbolicIndexingInterface.is_observed(sys::PartitionedGraphSystem, sym)
     haskey(sys.compu_namemap, sym)
 end
 
-function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, syms::Union{Vector{Symbol}, Tuple{Vararg{Symbol}}})
+function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, syms::Union{Vector{Symbol}, Tuple{Symbol}})
     fs = map(syms) do sym
         observed(sys, sym)
     end
