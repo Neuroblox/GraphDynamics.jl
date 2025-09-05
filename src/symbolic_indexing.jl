@@ -155,13 +155,17 @@ function SymbolicIndexingInterface.parameter_index(g::PartitionedGraphSystem, sy
 end
 
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters)
-    p.params_partitioned
+    p
 end
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i::ParamIndex)
     p.params_partitioned[i]
 end
 function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i::ConnectionIndex)
     p.connection_matrices[i]
+end
+
+function SymbolicIndexingInterface.set_parameter!(p::GraphSystemParameters, val, idx::ParamIndex)
+    set_param!!(p, nothing, idx, val)
 end
 
 function SymbolicIndexingInterface.parameter_symbols(g::PartitionedGraphSystem)
