@@ -196,7 +196,11 @@ function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, syms::U
     fs = map(syms) do sym
         observed(sys, sym)
     end
-    obs = map(f -> f(u, p, t), fs)
+    obs = if syms isa Tuple
+        (u, p, t) -> Tuple([f(u, p, t) for f in fs])
+    else
+        (u, p, t) -> [f(u, p, t) for f in fs]
+    end
 end
 
 function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, sym)
