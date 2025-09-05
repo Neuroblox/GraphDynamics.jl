@@ -5,3 +5,7 @@ using SafeTestsets
     solution_solve_test()
     sensitivity_test()
 end
+
+@safetestset "SII" begin
+    include("symbolic_indexing.jl")
+end
