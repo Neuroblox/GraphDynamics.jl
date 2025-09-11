@@ -1,6 +1,6 @@
 name = "GraphDynamics"
 uuid = "bcd5d0fe-e6b7-4ef1-9848-780c183c7f4c"
-version = "0.4.7"
+version = "0.4.8"
 
 [workspace]
 projects = ["test", "scrap"]
@@ -22,6 +22,7 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [extensions]
 MTKExt = ["Symbolics", "ModelingToolkit"]
+
 [compat]
 Accessors = "0.1"
 ConstructionBase = "1.5"
