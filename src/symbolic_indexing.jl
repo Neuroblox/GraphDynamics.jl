@@ -165,7 +165,11 @@ function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i:
 end
 
 function SymbolicIndexingInterface.set_parameter!(p::GraphSystemParameters, val, idx::ParamIndex)
-    set_param!!(p, nothing, idx, val)
+    (; params_partitioned) = p
+    params = params_partitioned[tup_index][v_index]
+    params_new = set_param_prop(params, prop, val; allow_typechange=false)
+    params_partitioned[tup_index][v_index] = params_new
+    p
 end
 
 function SymbolicIndexingInterface.parameter_symbols(g::PartitionedGraphSystem)
