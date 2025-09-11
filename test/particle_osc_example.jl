@@ -135,7 +135,7 @@ function particle_osc_prob(;x1, x2, m=3.0, mp1=1.0, kc_p1_p2=1, tspan = (0.0, 10
         [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0
          ],
         tspan,
-        (:osc₊m => m, :particle1₊m =>mp1, :fac_coulomb_particle1_particle2 => kc_p1_p2)
+        (:osc₊m => m, :particle1₊m => mp1, :fac_coulomb_particle1_particle2 => kc_p1_p2)
     )
 end
 function solve_particle_osc(;reltol=nothing, saveat=nothing, kwargs...)

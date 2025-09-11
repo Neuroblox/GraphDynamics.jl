@@ -18,13 +18,13 @@ struct CompuIndex
     prop::Symbol
     requires_inputs::Bool
 end
-
 struct ConnectionIndex
     nc::Int
     i_src::Int
     i_dst::Int
     j_src::Int
     j_dst::Int
+    connection_key::Symbol
     prop::Symbol
 end
 
@@ -164,6 +164,25 @@ function SymbolicIndexingInterface.parameter_values(p::GraphSystemParameters, i:
     p.connection_matrices[i]
 end
 
+function SymbolicIndexingInterface.set_parameter!(p::GraphSystemParameters, val, idx::ParamIndex)    
+    (; tup_index, v_index, prop) = idx
+    (; params_partitioned) = p
+    params = params_partitioned[tup_index][v_index]
+    params_new = set_param_prop(params, prop, val; allow_typechange=false)
+    params_partitioned[tup_index][v_index] = params_new
+    p
+end
+
+function SymbolicIndexingInterface.set_parameter!(buffer::GraphSystemParameters, value, conn_index::ConnectionIndex)    
+    (;connection_matrices, connection_namemap) = buffer
+    (; nc, i_src, i_dst, j_src, j_dst, connection_key, prop) = conn_index
+    conn_old = connection_matrices[nc][i_src, i_dst][j_src, j_dst]
+    conn_new = setproperties(conn_old, NamedTuple{(prop,)}(value))
+    connection_matrices[nc][i_src, i_dst][j_src, j_dst] = conn_new
+    buffer
+end
+
+
 function SymbolicIndexingInterface.parameter_symbols(g::PartitionedGraphSystem)
     collect(Iterators.flatten((keys(g.param_namemap), keys(g.connection_namemap))))
 end
@@ -253,9 +272,9 @@ function set_params!!(buffer::GraphSystemParameters, param_map)
     (; param_namemap, connection_namemap) = buffer
     for (key, val) ∈ param_map
         if haskey(param_namemap, key)
-            buffer = set_param!!(buffer, key, param_namemap[key], val)
+            buffer = set_param!!(buffer, param_namemap[key], val)
         elseif haskey(connection_namemap, key)
-            buffer = set_param!!(buffer, key, connection_namemap[key], val)
+            buffer = set_param!!(buffer, connection_namemap[key], val)
         else
             error("Key $key does not correspond to a known parameter. ")
         end
@@ -263,7 +282,10 @@ function set_params!!(buffer::GraphSystemParameters, param_map)
     buffer
 end
 
-function set_param!!(buffer::GraphSystemParameters, key, (; tup_index, v_index, prop)::ParamIndex, val)
+
+# This is a possibly-out-of-place variant of set_parameter! that is meant to be used by `remake` where
+# types are allowed to be widened.
+function set_param!!(buffer::GraphSystemParameters, (; tup_index, v_index, prop)::ParamIndex, val)
     (; params_partitioned) = buffer
     params = params_partitioned[tup_index][v_index]
     params_new = set_param_prop(params, prop, val; allow_typechange=true)
@@ -288,9 +310,9 @@ function re_eltype_params(params_partitioned)
     end
 end
 
-function set_param!!(buffer::GraphSystemParameters, key, conn_index::ConnectionIndex, value)
+function set_param!!(buffer::GraphSystemParameters, conn_index::ConnectionIndex, value)
     (;connection_matrices, connection_namemap) = buffer
-    (; nc, i_src, i_dst, j_src, j_dst, prop) = conn_index
+    (; nc, i_src, i_dst, j_src, j_dst, connection_key, prop) = conn_index
     conn_old = connection_matrices[nc][i_src, i_dst][j_src, j_dst]
     conn_new = setproperties(conn_old, NamedTuple{(prop,)}(value))
     CR_new = typeof(conn_new)
@@ -317,7 +339,7 @@ function set_param!!(buffer::GraphSystemParameters, key, conn_index::ConnectionI
         
         # Update the position in the namemap
         let conn_index_new = @set conn_index.nc = nc_new
-            connection_namemap[key] = conn_index_new # This is important so we don't lose track of where the parameter moved to!
+            connection_namemap[connection_key] = conn_index_new # This is important so we don't lose track of where the parameter moved to!
         end
         
         # Delete the old element!
