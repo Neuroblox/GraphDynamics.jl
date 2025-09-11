@@ -17,7 +17,7 @@ function ConstructionBase.setproperties(s::SubsystemParams{T}, patch::NamedTuple
     set_param_prop(s, patch; allow_typechange=false)
 end
 function set_param_prop(s::SubsystemParams{T}, key, val; allow_typechange=false) where {T}
-    set_param_prop(s, NamedTuple{(key,)}(val); allow_typechange)
+    set_param_prop(s, NamedTuple{(key,)}((val,)); allow_typechange)
 end
 function set_param_prop(s::SubsystemParams{T}, patch; allow_typechange=false) where {T}
     props = NamedTuple(s)
