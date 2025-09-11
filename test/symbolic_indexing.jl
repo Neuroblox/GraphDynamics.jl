@@ -16,6 +16,21 @@ end
     setp(prob, :particle1₊m)(prob, 2.0)
     @test getp(prob, :particle1₊m)(prob) == 2
 
+    # Test type promotion and conversion
+    @test_broken begin
+        (prob, :particle1₊m)(prob, 20)
+        @test getp(prob, :particle1₊m)(prob) === 20.0
+    end
+    # Test on connections as well
+    setp(prob, :fac_coulomb_particle1_particle2)(prob, 100)
+    @test getp(prob, :fac_coulomb_particle1_particle2)(prob) == 100
+    
+    # Test type promotion and conversion on connections
+    @test_broken begin
+        setp(prob, :fac_coulomb_particle1_particle2)(prob, 100.0)
+        getp(prob, :fac_coulomb_particle1_particle2)(prob) == 100
+    end
+    
     # Error on type-unstable change
     @test_throws ErrorException setp(prob, :particle1₊m)(prob, ones(3))
 

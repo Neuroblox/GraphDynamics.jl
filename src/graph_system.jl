@@ -229,7 +229,7 @@ function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nod
                                         push!(conns, conn)
                                         
                                         for (prop, name) ∈ pairs(connection_property_namemap(conn, get_name(nodekl), get_name(nodeij)))
-                                            connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, prop)
+                                            connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, name, prop)
                                         end
                                         
                                         for t ∈ event_times(conn)
@@ -281,7 +281,7 @@ end
                                 name_kl = names_partitioned[k][l]
                                 name_ij = names_partitioned[i][j]
                                 for (prop, name) ∈ pairs(connection_property_namemap(conn, name_kl, name_ij))
-                                    connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, prop)
+                                    connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, name, prop)
                                 end
                             end
                         end
