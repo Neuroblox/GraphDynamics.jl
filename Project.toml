@@ -1,6 +1,6 @@
 name = "GraphDynamics"
 uuid = "bcd5d0fe-e6b7-4ef1-9848-780c183c7f4c"
-version = "0.4.8"
+version = "0.4.9"
 
 [workspace]
 projects = ["test", "scrap"]
@@ -27,7 +27,7 @@ MTKExt = ["Symbolics", "ModelingToolkit"]
 Accessors = "0.1"
 ConstructionBase = "1.5"
 DiffEqBase = "6"
-ModelingToolkit = "9"
+ModelingToolkit = "9, 10"
 OhMyThreads = "0.6, 0.7, 0.8"
 OrderedCollections = "1.6.3"
 RecursiveArrayTools = "3"
