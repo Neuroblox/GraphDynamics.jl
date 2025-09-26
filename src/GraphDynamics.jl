@@ -129,6 +129,12 @@ using DiffEqBase:
     DiffEqBase,
     anyeltypedual
 
+using SciMLStructures:
+    SciMLStructures,
+    Tunable,
+    Constants,
+    canonicalize,
+    replace
 #----------------------------------------------------------
 # Random utils
 include("utils.jl")

@@ -231,3 +231,25 @@ function sensitivity_test()
         end
     end
 end
+
+using Mooncake, DifferentiationInterface, Enzyme, SciMLSensitivity
+import SciMLStructures as SS
+
+function autodiff_test()
+    function sum_test(p; vjp = EnzymeVJP())
+        prob = particle_osc_prob(;x1=1.0, x2=-1.0, m=3.0, mp1=1.0, kc_p1_p2=1.0, tspan = (0.0, 10.0), alg=Tsit5())
+        buffer, repack, b = SS.canonicalize(SS.Tunable(), prob.p)
+        newp = repack(p)
+        prob = remake(prob; p = newp)
+
+        sol = DiffEqBase.solve(prob, Tsit5(), saveat = 0.:0.5:10., sensealg = GaussAdjoint(; autojacvec = vjp))
+        return sum(sol.u[end])
+    end
+
+    params = [1., 1., 2., 1., 3., 1., 0.]
+    @test_nowarn sum_test(params)
+    @test_nowarn sum_test(params, vjp = SciMLSensitivity.MooncakeVJP())
+
+    @test_nowarn value_and_gradient(sum_test, AutoEnzyme(), params)
+    @test_nowarn value_and_gradient(sum_test, AutoMooncake(), params)
+end
