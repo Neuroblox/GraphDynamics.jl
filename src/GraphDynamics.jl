@@ -69,7 +69,7 @@ export
 
 
 #----------------------------------------------------------
-using Base: @kwdef, @propagate_inbounds
+using Base: @kwdef, @propagate_inbounds, isassigned
 using Base.Iterators: map as imap
 
 using Base.Cartesian: @nexprs
@@ -232,11 +232,6 @@ end
 """
 computed_properties(s::Subsystem) = (;)
 
-# TODO: delete this in the next breaking release.
-# Accidentally released this with computed_properies
-# as the name to use
-const computed_properies = computed_properties
-
 
 """
     computed_properties_with_inputs(s::Subsystem)
@@ -382,6 +377,7 @@ for s ∈ [:continuous, :discrete]
         $has_events(::Type{<:Subsystem{T}}) where {T} = $has_events(T)
         $has_events(::Type{<:SubsystemStates{T}}) where {T} = $has_events(T)
         $has_events(::Type{T}) where {T} = false
+        $has_events(::Type, ::Type, ::Type) = false
 
         $events_require_inputs(::Subsystem{T}) where {T} = $events_require_inputs(T)
         $events_require_inputs(::Type{<:Subsystem{T}}) where {T} = $events_require_inputs(T)
@@ -391,19 +387,28 @@ for s ∈ [:continuous, :discrete]
     end
 end
 
-"""
-    event_times(::T) = ()
 
-add methods to this function if a subsystem or connection type has a discrete event that triggers at pre-defined times. This will be used to add `tstops` to the `ODEProblem` or `SDEProblem` automatically during `GraphSystem` construction. This is vital for discrete events which only trigger at a specific time.
 """
-event_times(::Any) = ()
+    event_times(::Subsystem{SysType}) = ()
+
+add methods to this function if a subsystem type `SysType` has a discrete event that triggers at pre-defined times. This will be used to add `tstops` to the `ODEProblem` or `SDEProblem` automatically during `GraphSystem` construction. This is vital for discrete events which only trigger at a specific time.
+"""
+event_times(::Subsystem) = ()
+
+"""
+    event_times(::ConnType, ::Subsystem{SysSrc}, ::Subsystem{SysDst}) = ()
+
+add methods to this function if a connection type `ConnType` has a discrete event that triggers at pre-defined times. This will be used to add `tstops` to the `ODEProblem` or `SDEProblem` automatically during `GraphSystem` construction. This is vital for discrete events which only trigger at a specific time.
+"""
+event_times(::Any, ::Any, ::Any) = ()
 
 abstract type ConnectionRule end
-(c::ConnectionRule)(src, dst, t) = c(src, dst)
 Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 
 struct NotConnected{CR} end
 Base.getindex(::NotConnected{CR}, inds...) where {CR} = zero(CR)
+Base.eltype(::NotConnected{CR}) where {CR} = CR
+
 Base.copy(c::NotConnected) = c
 struct ConnectionMatrix{N, CR, Tup <: NTuple{N, NTuple{N, Union{NotConnected{CR}, AbstractMatrix{CR}}}}}
     data::Tup

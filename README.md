@@ -107,7 +107,7 @@ struct Spring <: ConnectionRule
     k::Float64
 end
 
-function ((;k)::Spring)(src::Subsystem, dst::Subsystem)
+function ((;k)::Spring)(src::Subsystem, dst::Subsystem, t)
     # Calculate the force on subsystem `dst` due to being connected with
     # subsystem `src` by a spring with spring constant `k`.
     F = k * (src.x - dst.x)
@@ -119,7 +119,7 @@ end
 ``` julia
 struct Coulomb <: ConnectionRule end
 
-function (::Coulomb)(src::Subsystem, dst::Subsystem)
+function (::Coulomb)(src::Subsystem, dst::Subsystem, t)
     # Calculate the Coulomb force on subsystem `dst` due to the charge of subsystem `src`
     F = -src.q * dst.q * sign(src.x - dst.x)/(abs(src.x - dst.x))^2
     # Return the `input` being sent to the `dst` subsystem
