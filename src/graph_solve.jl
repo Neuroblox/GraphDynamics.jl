@@ -210,6 +210,9 @@ end
 function maybe_sparse_enumerate_col(M::AbstractMatrix, j)
     enumerate(@view(M[:, j]))
 end
+function maybe_sparse_enumerate_col(::NotConnected, j)
+    ()
+end
 
 
 #----------------------------------------------------------
@@ -322,7 +325,7 @@ function _continuous_affect!(integrator,
             end
         end
     end
-end 
+end
 
 #----------------------------------------------------------
 # Infra. for discrete events. 
@@ -357,7 +360,10 @@ end
             @nexprs $Len i -> begin
                 @nexprs $Len k -> begin
                     M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
-                    if has_discrete_events(eltype(M))
+                    
+                    if !(M isa NotConnected) && has_discrete_events(eltype(M),
+                                                                    get_tag(eltype(states_partitioned[i])),
+                                                                    get_tag(eltype(states_partitioned[k])))
                         for j ∈ eachindex(states_partitioned[i])
                             sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
                             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
@@ -434,7 +440,9 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
         sview_dst = @view states_partitioned[i][j]
         pview_dst = @view params_partitioned[i][j]
         M = connection_matrices.matrices[nc].data[k][i]
-        if has_discrete_events(eltype(M))
+        if !(M isa NotConnected) && has_discrete_events(eltype(M),
+                                                        get_tag(eltype(states_partitioned[i])),
+                                                        get_tag(eltype(states_partitioned[k])))
             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
                 sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
                 if discrete_event_condition(Mlj, t, sys_src, sys_dst)
@@ -532,8 +540,8 @@ end
                     nothing
                 else
                     for j ∈ eachindex(states_partitioned[i])
-                        @inbounds conn = M[l, j]
-                        if !iszero(conn)
+                        if isassigned(M, l, j)
+                            conn = M[l, j]
                             @inbounds states_view_dst = @view states_partitioned[i][j]
                             @inbounds params_view_dst = @view params_partitioned[i][j]
                             sys_dst = Subsystem(states_view_dst[], params_view_dst[])

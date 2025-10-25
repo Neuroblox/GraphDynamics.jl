@@ -82,12 +82,15 @@ function system_wiring_rule!(g, src, dst; kwargs...)
     add_connection!(g, src, dst; conn=kwargs[:conn], kwargs...)
 end
 
-@kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, EVT, Ns, CONM, SNM, PNM, CNM, EP}
+@kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, SP, EVT, Ns, CONM, SNM, PNM, CNM, EP}
     graph::Union{Nothing, GraphSystem} = nothing
     flat_graph::Union{Nothing, GraphSystem} = nothing
     connection_matrices::CM
     states_partitioned::S
     params_partitioned::P
+    subsystems_partitioned::SP = map(i -> map(j -> Subsystem(states_partitioned[i][j], params_partitioned[i][j]),
+                                          eachindex(states_partitioned[i], params_partitioned[i])),
+                                 eachindex(states_partitioned, params_partitioned))
     tstops::EVT = Float64[]
     names_partitioned::Ns
     connection_namemap::CONM = make_connection_namemape(names_partitioned, connection_matrices)
@@ -174,7 +177,8 @@ function PartitionedGraphSystem(g::GraphSystem)
 
     This allows for type-stable calculations involving the subsystems and their connections
     ===================================================================================================#
-    (;connection_matrices, connection_tstops, connection_namemap) = make_connection_matrices(g_flat, nodes_partitioned)
+    (;connection_matrices, connection_tstops, connection_namemap) = make_connection_matrices(g_flat, nodes_partitioned;
+                                                                                             subsystems_partitioned, names_partitioned)
 
     append!(tstops, connection_tstops)
     
@@ -184,6 +188,7 @@ function PartitionedGraphSystem(g::GraphSystem)
         flat_graph=g_flat,
         is_stochastic = any(isstochastic, node_types),
         connection_matrices,
+        subsystems_partitioned,
         states_partitioned,
         params_partitioned,
         tstops=unique!(tstops),
@@ -195,18 +200,18 @@ end
 function make_partitioned_nodes(g_flat)
     node_types = (unique ∘ imap)(typeof, nodes(g_flat))
     nodes_partitioned = map(node_types) do T
-        if isstochastic(T)
-            system_is_stochastic = true
-        end
         filter(collect(nodes(g_flat))) do sys
             sys isa T
         end
     end
 end
 
+
 function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nodes(g_flat);
                                   pred=(_) -> true,
-                                  conn_key=:conn)
+                                  conn_key=:conn,
+                                  subsystems_partitioned=map(v -> map(to_subsystem, v), nodes_partitioned),
+                                  names_partitioned=map(v -> map(x -> convert(Symbol, get_name(x)), v), nodes_partitioned))
     check_no_double_connections(g_flat, conn_key)
     connection_types = (imap)(connections(g_flat)) do (; src, dst, data)
         if haskey(data, conn_key) && pred(data[conn_key])
@@ -234,11 +239,11 @@ function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nod
                                         push!(ls, l)
                                         push!(conns, conn)
                                         
-                                        for (prop, name) ∈ pairs(connection_property_namemap(conn, get_name(nodekl), get_name(nodeij)))
+                                        for (prop, name) ∈ pairs(connection_property_namemap(conn, names_partitioned[k][l], names_partitioned[i][j]))
                                             connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, name, prop)
                                         end
                                         
-                                        for t ∈ event_times(conn)
+                                        for t ∈ event_times(conn, subsystems_partitioned[k][l], subsystems_partitioned[i][j])
                                             push!(connection_tstops, t)
                                         end
                                     end
