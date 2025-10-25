@@ -9,6 +9,12 @@ end
 GraphSystem() = GraphSystem(OrderedDict{Any, OrderedDict{Any, GraphSystemConnection}}())
 GraphSystemConnection(src, dst; kwargs...) = GraphSystemConnection(src, dst, NamedTuple(kwargs))
 
+function Base.show(io::IO, sys::GraphSystem)
+    n_nodes = count(Returns(true), nodes(sys)) 
+    n_conns = count(Returns(true), connections(sys))
+    print(io, GraphSystem, "(...$n_nodes nodes and $n_conns connections...)")
+end
+
 connections(g::GraphSystem) = Iterators.flatmap(g.data) do (_, destinations)
     Iterators.flatmap(destinations) do (_, edges)
         edges
