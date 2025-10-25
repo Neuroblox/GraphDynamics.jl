@@ -88,7 +88,7 @@ struct Spring{T} <: ConnectionRule
 end
 Base.zero(::Type{Spring{T}}) where {T} = Spring(zero(T))
 
-function ((;k)::Spring)(src::Subsystem, dst::Subsystem)
+function ((;k)::Spring)(src::Subsystem, dst::Subsystem, t)
     # Calculate the force on subsystem `dst` due to being connected with
     # subsystem `src` by a spring with spring constant `k`.
     F = k * (src.x - dst.x)
@@ -101,7 +101,7 @@ struct Coulomb{T} <: ConnectionRule
 end
 Base.zero(::Type{Coulomb{T}}) where {T} = Coulomb(zero(T))
 
-function ((;fac)::Coulomb)(src::Subsystem, dst::Subsystem)
+function ((;fac)::Coulomb)(src::Subsystem, dst::Subsystem, t)
     # Calculate the Coulomb force on subsystem `dst` due to the charge of subsystem `src`
     F = -fac * src.q * dst.q * sign(src.x - dst.x)/(abs(src.x - dst.x))^2
     # Return the `input` being sent to the `dst` subsystem

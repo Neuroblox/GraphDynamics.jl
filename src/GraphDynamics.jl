@@ -232,11 +232,6 @@ end
 """
 computed_properties(s::Subsystem) = (;)
 
-# TODO: delete this in the next breaking release.
-# Accidentally released this with computed_properies
-# as the name to use
-const computed_properies = computed_properties
-
 
 """
     computed_properties_with_inputs(s::Subsystem)
@@ -399,7 +394,6 @@ add methods to this function if a subsystem or connection type has a discrete ev
 event_times(::Any) = ()
 
 abstract type ConnectionRule end
-(c::ConnectionRule)(src, dst, t) = c(src, dst)
 Base.zero(::T) where {T <: ConnectionRule} = zero(T)
 
 struct NotConnected{CR} end

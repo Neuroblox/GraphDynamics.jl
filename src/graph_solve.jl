@@ -359,8 +359,10 @@ end
                     M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
                     if has_discrete_events(eltype(M))
                         for j ∈ eachindex(states_partitioned[i])
+                            sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
                             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                                discrete_event_condition(Mlj, t) && return true
+                                sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                                discrete_event_condition(Mlj, t, sys_src, sys_dst) && return true
                             end
                         end
                     end
@@ -434,8 +436,8 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
         M = connection_matrices.matrices[nc].data[k][i]
         if has_discrete_events(eltype(M))
             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                if discrete_event_condition(Mlj, t)
-                    sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                if discrete_event_condition(Mlj, t, sys_src, sys_dst)
                     sview_src = @view states_partitioned[k][l]
                     pview_src = @view params_partitioned[k][l]
                     if discrete_events_require_inputs(typeof(Mlj))
