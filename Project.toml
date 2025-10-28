@@ -1,6 +1,6 @@
 name = "GraphDynamics"
 uuid = "bcd5d0fe-e6b7-4ef1-9848-780c183c7f4c"
-version = "0.5.0"
+version = "0.6.0"
 
 [workspace]
 projects = ["test", "scrap"]

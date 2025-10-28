@@ -208,11 +208,11 @@ states.x  # 1.0
 function get_states end
 
 """
-   computed_properties(::Subsystem{T}) :: NamedTuple{props, NTuple{N, funcs}}
+   computed_properties(::Type{T}) :: NamedTuple{props, NTuple{N, funcs}}
 
 Signal that a subsystem has properties which can be computed on-the-fly based on it's existing properties. In the termoinology used by ModelingToolkit.jl, these are "observed states".
 
-This function takes in a `Subsystem` and returns a `NamedTuple` where each key is a property name that can be computed, and each value is a function that takes in the subsystem and returns a computed value.
+This function takes in a tag type `T` and returns a `NamedTuple` where each key is a property name that can be computed, and each value is a function that takes in a `Subsystem{T}` and returns a computed value.
 
 By default, this function returns an empty NamedTuple.
 
@@ -220,7 +220,7 @@ Example:
 
 ```julia
 struct Position end
-function GraphDynamics.computed_properties(::Subsystem{Position})
+function GraphDynamics.computed_properties(::Type{Position})
     (;r = (;x, y) -> √(x^2 + y^2),
       θ = (;x, y) -> atan(y, x))
 end
@@ -229,22 +229,25 @@ let sys = Subsystem{Position}(states=(x=1, y=2), params=(;))
     sys.r == √(sys.x^2 + sys.y^2)
 end
 ```
-"""
-computed_properties(s::Subsystem) = (;)
 
+Implementing this method will make the the reported properties work with SymbolicIndexingInterface.jl
+"""
+computed_properties(s::Type{<:Any}) = (;)
+computed_properties(s::Type{Union{}}) = error("This should be unreachable")
 
 """
-    computed_properties_with_inputs(s::Subsystem)
+    computed_properties_with_inputs(::Type{T}) :: NamedTuple{props, NTuple{N, funcs}}
 
 Signal that a subsystem has properties which can be computed on-the-fly based on it's existing properties. In the termoinology used by ModelingToolkit.jl, these are "observed states", but they also require the inputs to the subsystem to compute (and thus are non-local to the subsystem).
 
 This function takes in a `Subsystem` and returns a `NamedTuple` where each key is a property name that can be computed, and each value is a function that takes in the subsystem and returns a computed value.
 
-By default, this function returns an empty NamedTuple.
+By default, this function returns an empty `NamedTuple`.
 
-This is typically only usable on objects like ODESolutions.
+Implementing this method will make the the reported properties work with SymbolicIndexingInterface.jl.
 """
-computed_properties_with_inputs(s::Subsystem) = (;)
+computed_properties_with_inputs(::Type{<:Any}) = (;)
+computed_properties_with_inputs(s::Type{Union{}}) = error("This should be unreachable")
 
 """
      subsystem_differential(subsystem, input, t)
