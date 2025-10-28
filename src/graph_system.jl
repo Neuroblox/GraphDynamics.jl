@@ -120,7 +120,7 @@ function PartitionedGraphSystem(g::GraphSystem)
 
     in the graph, then we'd end up with
 
-    nodes_paritioned = [SysType1[n1, n2], SysType1[n3]]
+    nodes_paritioned = [SysType1[n1, n2], SysType2[n3]]
     
     ===================================================================================================#
     

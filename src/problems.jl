@@ -213,3 +213,41 @@ function _problem(g::PartitionedGraphSystem, tspan; scheduler, allow_nonconcrete
 
     (; f, u, tspan, p, callback, tstops)
 end
+
+SciMLStructures.isscimlstructure(::GraphSystemParameters) = true
+SciMLStructures.ismutablescimlstructure(::GraphSystemParameters) = false
+SciMLStructures.hasportion(::Tunable, ::GraphSystemParameters) = true
+
+function SciMLStructures.canonicalize(::Tunable, p::GraphSystemParameters) 
+    paramvals = map(p.params_partitioned) do paramclass
+        vals = map(paramclass) do paramobj
+            collect(values(NamedTuple(paramobj)))
+        end
+        reduce(vcat, vals)
+    end
+    buffer = reduce(vcat, paramvals)
+
+    repack = let p = p
+        function (newbuffer)
+            replace(Tunable(), p, newbuffer)
+        end
+    end
+    buffer, repack, false
+end
+
+function SciMLStructures.replace(::Tunable, p::GraphSystemParameters, newbuffer)
+    np = copy(p)
+    np_part = let i = 1
+        map(np.params_partitioned) do paramclass
+            for j in 1:length(paramclass)
+                obj = paramclass[j]
+                syms = keys(NamedTuple(obj))
+                paramclass[j] = set_param_prop(obj, (; (syms .=> view(newbuffer, i:i+length(syms)-1))...))
+                i += length(syms)
+            end
+        end
+        @assert length(newbuffer) == i - 1
+    end
+    @set np.params_partitioned = np_part
+    np
+end
