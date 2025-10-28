@@ -64,20 +64,21 @@ end
 
 
 function make_compu_namemap(names_partitioned::NTuple{N, Vector{Symbol}},
-                          states_partitioned::NTuple{N, AbstractVector{<:SubsystemStates}},
-                          params_partitioned::NTuple{N, AbstractVector{<:SubsystemParams}}) where {N}
+                            states_partitioned::NTuple{N, AbstractVector{<:SubsystemStates}},
+                            params_partitioned::NTuple{N, AbstractVector{<:SubsystemParams}}) where {N}
     namemap = OrderedDict{Symbol, CompuIndex}()
     for i ∈ eachindex(names_partitioned, states_partitioned, params_partitioned)
         for j ∈ eachindex(names_partitioned[i], states_partitioned[i], params_partitioned[i])
             states = states_partitioned[i][j]
             params = params_partitioned[i][j]
             sys = Subsystem(states, params)
-            for name ∈ keys(computed_properties(sys))
+            tag = get_tag(sys)
+            for name ∈ keys(computed_properties(tag))
                 requires_inputs = false
                 propname = Symbol(names_partitioned[i][j], "₊", name)
                 namemap[propname] = CompuIndex(i, j, name, requires_inputs)
             end
-            for name ∈ keys(computed_properties_with_inputs(sys))
+            for name ∈ keys(computed_properties_with_inputs(tag))
                 requires_inputs = true
                 propname = Symbol(names_partitioned[i][j], "₊", name)
                 namemap[propname] = CompuIndex(i, j, name, requires_inputs)
@@ -233,8 +234,8 @@ function SymbolicIndexingInterface.observed(sys::PartitionedGraphSystem, sym)
             i = valueof(val_tup_index)
             subsys = Subsystem(states_partitioned[i][v_index], params_partitioned[i][v_index])
             input = calculate_inputs(val_tup_index, v_index, states_partitioned, params_partitioned, connection_matrices, t)
-
-            comp_props = computed_properties_with_inputs(subsys)
+            tag = get_tag(subsys)
+            comp_props = computed_properties_with_inputs(tag)
             comp_props[prop](subsys, input)
         end
     else

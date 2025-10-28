@@ -191,8 +191,8 @@ get_tag(::Subsystem{Name}) where {Name} = Name
 
 get_tag(::Type{<:Subsystem{Name}}) where {Name} = Name
 
-function Base.getproperty(s::Subsystem{<:Any, States, Params},
-                          prop::Symbol) where {States, Params}
+function Base.getproperty(s::Subsystem{Name, States, Params},
+                          prop::Symbol) where {Name, States, Params}
     states = NamedTuple(get_states(s))
     params = NamedTuple(get_params(s))
     if prop ∈ keys(states)
@@ -200,7 +200,7 @@ function Base.getproperty(s::Subsystem{<:Any, States, Params},
     elseif prop ∈ keys(params)
         getproperty(params, prop)
     else
-        comp_props = computed_properties(s)
+        comp_props = computed_properties(Name)
         if prop ∈ keys(comp_props)
             comp_props[prop](s)
         else
@@ -209,7 +209,7 @@ function Base.getproperty(s::Subsystem{<:Any, States, Params},
     end
 end
 @noinline subsystem_prop_err(s::Subsystem{Name}, prop) where {Name} = error(ArgumentError(
-    "property $(prop) of ::Subsystem{$Name} not found, valid properties are $(propertynames(merge(NamedTuple(get_states(s)), NamedTuple(get_params(s)))))"
+    "property $(prop) of ::Subsystem{$Name} not found, valid properties are $(propertynames(merge(NamedTuple(get_states(s)), NamedTuple(get_params(s)), computed_properties(Name))))"
 ))
 
 Base.eltype(::Subsystem{<:Any, T}) where {T} = T

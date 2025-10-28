@@ -40,7 +40,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Particle}, input, t
 	# Return the differential of the current state:
     SubsystemStates{Particle}(;x=dx, v=dv) 
 end
-function GraphDynamics.computed_properties_with_inputs(::Subsystem{Particle})
+function GraphDynamics.computed_properties_with_inputs(::Type{Particle})
     a(sys, input) = input.F / sys.m 
     (; a)
 end
@@ -80,7 +80,7 @@ function GraphDynamics.subsystem_differential(sys::Subsystem{Oscillator}, input,
     dv = (F - k*(x - x₀))/m  # Derivative of v is the acceleration due to the input force, and the acceleration due to the spring.
     SubsystemStates{Oscillator}(;x=dx, v=dv)
 end
-GraphDynamics.computed_properties(::Subsystem{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
+GraphDynamics.computed_properties(::Type{Oscillator}) = (;ω₀ = ((;m, k),) -> √(k/m))
 
 # Now lets construct some `ConnectionRule`s 
 struct Spring{T} <: ConnectionRule
