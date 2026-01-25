@@ -14,6 +14,7 @@ end
     subsystem_differential,
     apply_subsystem_noise!,
     subsystem_differential_requires_inputs,
+    connection_needs_ctx,
 
     initialize_input,
     combine,
@@ -42,7 +43,8 @@ end
     get_name,
     connection_property_namemap,
 
-    make_connection_matrices
+    ArrayOfSubsystems,
+    ArrayOfSubsystemStates
 )
 
 export
@@ -50,7 +52,10 @@ export
     SubsystemParams,
     SubsystemStates,
     GraphSystem,
-    PartitionedGraphSystem,
+    GraphSystemParameters,
+    PartitioningGraphSystem,
+    GraphNamemap,
+    PartitionedIndex,
     get_tag,
     get_states,
     get_params,
@@ -65,11 +70,14 @@ export
     add_node!,
     nodes,
     has_connection,
-    delete_connection!
-
+    flatten_graph,
+    connection_equations,
+    is_flat,
+    PolyesterScheduler
 
 #----------------------------------------------------------
-using Base: @kwdef, @propagate_inbounds, isassigned
+
+using Base: @kwdef, @propagate_inbounds, isassigned, isstored
 using Base.Iterators: map as imap
 
 using Base.Cartesian: @nexprs
@@ -98,13 +106,17 @@ using SymbolicIndexingInterface:
     setu,
     setp,
     getp,
-    observed
+    observed,
+    is_parameter,
+    parameter_index
 
 using Accessors:
     Accessors,
     @set,
     @reset,
-    @insert
+    @insert,
+    set,
+    PropertyLens
 
 using ConstructionBase:
     ConstructionBase,
@@ -129,9 +141,21 @@ using DiffEqBase:
     DiffEqBase,
     anyeltypedual
 
+using FieldViews:
+    FieldViews,
+    FieldViewable,
+    FieldView
+
+using Polyester:
+    Polyester,
+    @batch
+
+
 #----------------------------------------------------------
 # Random utils
 include("utils.jl")
+
+struct PolyesterScheduler end
 
 #----------------------------------------------------------
 # API functions to be implemented by new Systems
@@ -139,9 +163,15 @@ include("utils.jl")
 struct SubsystemStates{T, Eltype, States <: NamedTuple} <: AbstractVector{Eltype}
     states::States
 end
+function FieldViews.fieldmap(p::Type{SubsystemStates{T, Elt, NamedTuple{state_names, tup}}}) where {T, Elt, state_names, tup}
+    map(name -> :states => name, state_names)
+end
 
 struct SubsystemParams{T, Params <: NamedTuple}
     params::Params
+end
+function FieldViews.fieldmap(p::Type{SubsystemParams{T, NamedTuple{param_names, tup}}}) where {T, param_names, tup}
+    map(name -> :params => name, param_names)
 end
 
 """
@@ -154,6 +184,11 @@ See also `subsystem_differential`, `SubsystemStates`, `SubsystemParams`.
 struct Subsystem{T, Eltype, States, Params}
     states::SubsystemStates{T, Eltype, States}
     params::SubsystemParams{T, Params}
+end
+function FieldViews.fieldmap(::Type{Subsystem{T, Elt, <:NamedTuple{state_names}, <:NamedTuple{param_names}}}) where {T, Elt, state_names, param_names}
+    state_map = map(name -> :states => :states => name, state_names)
+    param_map = map(name -> :params => :params => name, param_names)
+    (state_map..., param_map...)
 end
 
 """
@@ -285,7 +320,7 @@ By default, it does nothing (no noise). Override this for stochastic subsystems.
 ```julia
 function GraphDynamics.apply_subsystem_noise!(vstate, sys::Subsystem{BrownianParticle}, t)
     # No noise in position, so we don't modify vstate[:x]
-    vstate[:v] = sys.σ    # White noise in velocity with amplitude σ
+    vstate.v[] = sys.σ    # White noise in velocity with amplitude σ
 end
 ```
 """
@@ -294,12 +329,12 @@ function apply_subsystem_noise!(vstate, subsystem, t)
 end
 
 
-# """
-#     must_run_before(::Type{T}, ::Type{U})
+"""
+    must_run_before(::Type{T}, ::Type{U})
 
-# Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`.
-# """
-# must_run_before(::Type{T}, ::Type{U}) where {T, U} = false
+Overload this function to tell the ODE solver that subsystems of type `T` must run before subsystems of type `U`. Default `false`.
+"""
+must_run_before(::Type{T}, ::Type{U}) where {T, U} = false
 
 function continuous_event_condition end
 function apply_continuous_event! end
@@ -506,7 +541,6 @@ end
 ```
 the default implementation would give
 ```julia
-
 julia> GraphDynamics.connection_property_namemap(Coulomb(1.0), :p1, :p2)
 (:fac_Coulomb_p1_p2,)
 ```
@@ -521,14 +555,91 @@ function connection_property_namemap(conn::CR, name_src, name_dst) where CR
     NamedTuple{pnames}(vals)
 end
 
+######## Equations
+"""
+    node_equations(::Subsystem{T}) where T
+
+Output the differential equations for a node as LaTeX strings. Requires Latexify and Symbolics to be loaded.
+"""
+function node_equations end
+"""
+    graph_equations(::PartitionedGraphSystem)
+
+Output the equations for a flattened graph system as LaTeX strings. Requires Latexify and Symbolics to be loaded.
+"""
+function graph_equations end
+"""
+    connection_equations(conn::ConnectionRule, src::Subsystem{U}, dst::Subsystem{T})
+
+Output the equations for the connection between node `src` and node `dst`. Requires Latexify and Symbolics to be loaded.
+"""
+function connection_equations end
+
+function graph_ode! end
+
+
+"""
+    connection_needs_ctx(conn::ConnectionRule) :: Bool
+
+(default: `false`) determines if the call signature to `conn` should be of the form
+
+    conn(src, dst, t, ctx::NamedTuple{states_partitioned, params_partitioned, connection_matrices})
+
+or
+
+    conn(src, dst, t)
+
+Overload this function to return `true` if you have a connection rule type that needs access to the wider-graph
+structure.
+"""
+@inline connection_needs_ctx(x) = false
+
+struct StateIndex
+    idx::Int
+end
+struct ParamIndex
+    tup_index::Int
+    v_index::Int
+    prop::Symbol
+end
+struct CompuIndex
+    tup_index::Int
+    v_index::Int
+    prop::Symbol
+    requires_inputs::Bool
+end
+struct ConnectionIndex
+    nc::Int
+    i_src::Int
+    i_dst::Int
+    j_src::Int
+    j_dst::Int
+    connection_key::Union{Symbol, Nothing}
+    prop::Union{Symbol, Nothing}
+end
+
+struct GraphNamemap
+    state_namemap::OrderedDict{Symbol, StateIndex}
+    param_namemap::OrderedDict{Symbol, ParamIndex}
+    compu_namemap::OrderedDict{Symbol, CompuIndex}
+    connection_namemap::OrderedDict{Symbol, ConnectionIndex}
+end
+function Base.copy(g::GraphNamemap)
+    GraphNamemap(copy.((
+        g.state_namemap,
+        g.param_namemap,
+        g.compu_namemap,
+        g.connection_namemap
+    ))...)
+end
 
 #----------------------------------------------------------
 # Infrastructure for subsystems
 include("subsystems.jl")
 
 #----------------------------------------------------------
-# The GraphSystem type, and the stuff to turn it into a
-# PartitionedGraphSystem
+# The GraphSystem type
+include("partitioning_graph_system.jl")
 include("graph_system.jl")
 
 #----------------------------------------------------------

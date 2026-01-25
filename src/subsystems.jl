@@ -23,7 +23,7 @@ function set_param_prop(s::SubsystemParams{T}, patch; allow_typechange=false) wh
     props = NamedTuple(s)
     props′ = merge(props, patch)
     if typeof(props) != typeof(props′) && !allow_typechange
-        param_setproperror(props, props′)
+        props′ = convert(typeof(props), props′)
     end
     SubsystemParams{T}(props′)
 end
@@ -46,6 +46,12 @@ function Base.convert(::Type{SubsystemParams{Name, NT}}, p::SubsystemParams{Name
 end
 @generated function promote_numeric_param_eltype(::Type{SubsystemParams{Name, NamedTuple{props, Tup}}}) where {Name, props, Tup}
     :(promote_type($(param for param in Tup.parameters if param <: Number)...))
+end
+
+function Base.length(
+    ::Type{SubsystemParams{Name, NamedTuple{names, Tup}}}
+    ) where {Name, names, Tup}
+    length(names)
 end
 
 #------------------------------------------------------------
@@ -219,111 +225,124 @@ Base.eltype(::Type{<:Subsystem{<:Any, T}}) where {T} = T
 _deval(::Val{T}) where {T} = T
 function partitioned(v, partition_plan::NTuple{N, Any}) where {N}
     map(partition_plan) do (;inds, sz, TVal)
+        # to_structarray(_deval(TVal), v, inds, sz[2])
         M = reshape(view(v, inds), sz...)
-        VectorOfSubsystemStates{_deval(TVal)}(M)
+        ArrayOfSubsystemStates{_deval(TVal)}(M)
     end
 end
 
-struct VectorOfSubsystemStates{States, Mat <: AbstractMatrix} <: AbstractVector{States}
-    data::Mat
+struct ArrayOfSubsystemStates{States, N, Store <: StridedArray} <: DenseArray{States, N}
+    parent::Store
+    function ArrayOfSubsystemStates{SubsystemStates{Name, T, NamedTuple{snames, Tup}}}(v::StridedArray{U, M}) where {Name, T, U, M, snames, Tup}
+        @assert size(v,1) == length(snames)
+        V = promote_type(T,U)
+        States = SubsystemStates{Name, V, NamedTuple{snames, NTuple{length(snames), V}}}
+        new{States, M-1, typeof(v)}(v)
+    end
 end
-function VectorOfSubsystemStates{SubsystemStates{Name, T, NamedTuple{snames, Tup}}}(v::AbstractMatrix{U}) where {Name, T, U, snames, Tup}
-    V = promote_type(T,U)
-    States = SubsystemStates{Name, V, NamedTuple{snames, NTuple{length(snames), V}}}
-    VectorOfSubsystemStates{States, typeof(v)}(v)
+const VectorOfSubsystemStates{States, Store} = ArrayOfSubsystemStates{States, 1, Store}
+Base.size(v::ArrayOfSubsystemStates{States}) where {States} = size(parent(v))[2:end]
+Base.parent(v::ArrayOfSubsystemStates) = getfield(v, :parent)
+Base.IndexStyle(::Type{<:ArrayOfSubsystemStates}) = IndexCartesian()
+Base.pointer(v::ArrayOfSubsystemStates) = pointer(parent(v))
+function Base.elsize(::Type{ArrayOfSubsystemStates{States, N, Store}}) where {States, N, Store}
+    sizeof(States)
 end
 
-Base.size(v::VectorOfSubsystemStates{States}) where {States} = (size(v.data, 2),)
+@propagate_inbounds function Base.getindex(v::ArrayOfSubsystemStates{States}, idx::Integer...) where {States <: SubsystemStates}
+    l = length(States)
+    data = parent(v)
+    @boundscheck checkbounds(data, 1:l, idx...)
+    @inbounds States(view(data, 1:l, idx...))
+end
+@propagate_inbounds function Base.setindex!(v::ArrayOfSubsystemStates{States}, state::States′, idx::Integer...) where {States <: SubsystemStates, States′ <: SubsystemStates}
+    l = length(States)
+    data = parent(v)
+    @boundscheck checkbounds(data, 1:l, idx...)
+    @inbounds data[1:l, idx...] .= Tuple(convert(States, state))
+    v
+end
+
+
+Base.IndexStyle(::Type{<:VectorOfSubsystemStates}) = IndexLinear()
 
 @propagate_inbounds function Base.getindex(v::VectorOfSubsystemStates{States}, idx::Integer) where {States <: SubsystemStates}
     l = length(States)
-    @boundscheck checkbounds(v.data, 1:l, idx)
-    @inbounds States(view(v.data, 1:l, idx))
+    data = parent(v)
+    # @boundscheck checkbounds(data, :, idx)
+    # @inbounds 
+    States(view(data, 1:l, idx))
 end
-
-@noinline function sym_not_found_error(::Type{S}, s::Symbol) where {S<:SubsystemStates}
-    error("$S does not have a field $s")
-end
-
-@propagate_inbounds function Base.getindex(v::VectorOfSubsystemStates{States}, s::Symbol, idx::Integer) where {States <: SubsystemStates}
-    i = state_ind(States, s)
-    if isnothing(i)
-        sym_not_found_error(States, s)
-    end
-    v.data[i, idx]
-end
-
 @propagate_inbounds function Base.setindex!(v::VectorOfSubsystemStates{States}, state::States, idx::Integer) where {States <: SubsystemStates}
     l = length(States)
-    @boundscheck checkbounds(v.data, 1:l, idx)
-    @inbounds v.data[1:l, idx] .= Tuple(state)
+    data = parent(v)
+    # @boundscheck checkbounds(data, :, idx)
+    # @inbounds 
+    data[1:l, idx] .= Tuple(state)
     v
 end
 
-@propagate_inbounds function Base.setindex!(v::VectorOfSubsystemStates{States},
-                                            val,
-                                            s::Symbol,
-                                            idx::Integer) where {States <: SubsystemStates}
-    i = state_ind(States, s)
-    if isnothing(i)
-        sym_not_found_error(States, s)
-    end
-    v.data[i, idx] = val
+function Base.getproperty(v::ArrayOfSubsystemStates, prop::Symbol)
+    FieldView{prop}(v)
 end
-
-
+@propagate_inbounds function Base.view(v::ArrayOfSubsystemStates{States}, inds...) where {States}
+    l = length(States)
+    ArrayOfSubsystemStates{States}(view(parent(v), :, inds...))
+end
 
 #-------------------------------------------------------------------------
-struct SubsystemStatesView{States, Mat <: AbstractMatrix} <: AbstractArray{States, 0}
-    data::Mat
-    idx::Int
-end
-@propagate_inbounds function Base.view(v::VectorOfSubsystemStates{States, Mat}, idx::Int) where {States, Mat}
-    l = length(States)
-    @boundscheck checkbounds(v.data, 1:l, idx)
-    SubsystemStatesView{States, Mat}(v.data, idx)
-end
-Base.size(::SubsystemStatesView) = ()
-function Base.getindex(v::SubsystemStatesView{States}) where {States <: SubsystemStates}
-    l = length(States)
-    @inbounds States(view(v.data, 1:l, v.idx))
-end
-@propagate_inbounds function Base.getindex(v::SubsystemStatesView{States}, s::Symbol) where {States <: SubsystemStates}
-    i = state_ind(States, s)
-    idx = v.idx
-    if isnothing(i)
-        sym_not_found_error(States, s)
+
+struct ArrayOfSubsystems{T, N, Subsys<:Subsystem{T}, StateStore <:AbstractArray{<:SubsystemStates, N}, ParamStore <: AbstractArray{<:SubsystemParams, N}} <: AbstractArray{Subsys, N}
+    states::StateStore
+    params::ParamStore
+    function ArrayOfSubsystems(vstates::AbstractArray{SubsystemStates{T, Elt, SNT}, N},
+                               vparams::AbstractArray{SubsystemParams{T, PNT}, N}
+                               ) where {T, Elt, N, SNT, PNT}
+        @assert size(vstates) == size(vparams)
+        new{T, N, Subsystem{T, Elt, SNT, PNT}, typeof(vstates), typeof(vparams)}(vstates, vparams)
     end
-    @boundscheck checkbounds(v.data, i, idx)
-    @inbounds v.data[i, idx]
+end
+const VectorOfSubsystems{States, Store} = ArrayOfSubsystems{States, 1, Store}
+Base.size(v::ArrayOfSubsystems) = size(getfield(v, :states))
+Base.IndexStyle(::Type{<:ArrayOfSubsystems}) = IndexLinear()
+get_states(x::ArrayOfSubsystems) = getfield(x, :states)
+get_params(x::ArrayOfSubsystems) = getfield(x, :params)
+
+
+@propagate_inbounds function Base.getindex(v::ArrayOfSubsystems, idx::Integer)
+    vstates = getfield(v, :states)
+    vparams = getfield(v, :params)
+    @boundscheck checkbounds(vstates, idx)
+    states = @inbounds vstates[idx]
+    params = @inbounds vparams[idx]
+    Subsystem(states, params)
 end
 
-@propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, state::States) where {States <: SubsystemStates}
-    l = length(States)
-    idx = v.idx
-    @boundscheck checkbounds(v.data, 1:l, idx)
-    tup = Tuple(state)
-    @inbounds begin
-        @simd for i ∈ 1:l
-            v.data[i, idx] = tup[i]
-        end
-    end
+@propagate_inbounds function Base.setindex!(v::ArrayOfSubsystems{T, N, Subsys}, sys::Subsystem, idx::Integer) where {T, N, Subsys}
+    vstates = getfield(v, :states)
+    vparams = getfield(v, :params)
+    @boundscheck checkbounds(vstates, idx)
+    states = @inbounds vstates[idx] = get_states(sys)
+    params = @inbounds vparams[idx] = get_params(sys)
     v
 end
 
-function Base.setindex!(v::SubsystemStatesView{States1}, state::States2) where {States1 <: SubsystemStates, States2 <: SubsystemStates}
-    state′ = convert(States1, state)
-    setindex!(v, state′)
-end
-
-
-@propagate_inbounds function Base.setindex!(v::SubsystemStatesView{States}, val, s::Symbol) where {States <: SubsystemStates}
-    i = state_ind(States, s)
-    idx = v.idx
-    if isnothing(i)
-        sym_not_found_error(States, s)
+function Base.getproperty(v::ArrayOfSubsystems{T, N, Subsystem{T, Elt, SNT, PNT}}, prop::Symbol) where {T, N, Elt, SNT, PNT}
+    if hasfield(SNT, prop)
+        FieldView{prop}(getfield(v, :states))
+    elseif hasfield(PNT, prop)
+        FieldView{prop}(getfield(v, :params))
+    else
+        @noinline errf(T, prop) = error("Type $T has no property $prop")
+        errf(eltype(v), prop)
     end
-    @boundscheck checkbounds(v.data, i, idx)
-    @inbounds v.data[i, v.idx] = val
-    v
 end
+
+function Base.view(v::ArrayOfSubsystems, args...)
+    vstates = view(getfield(v, :states), args...)
+    vparams = view(getfield(v, :params), args...)
+    ArrayOfSubsystems(vstates, vparams)
+end
+
+get_parent_index(x::SubArray{T, 0}) where {T} = only(x.indices)
+get_parent_index(x::ArrayOfSubsystems{T, 0}) where {T} = get_parent_index(get_params(x))

@@ -3,10 +3,38 @@ struct GraphSystemConnection
     dst
     data::NamedTuple
 end
-struct GraphSystem
-    data::OrderedDict{Any, OrderedDict{Any, Vector{GraphSystemConnection}}}
+
+function Base.show(io::IO, conn::GraphSystemConnection)
+    printstyled("GraphSystemConnection", bold = true)
+    println("\nsrc: $(get_name(conn.src))\ndst: $(get_name(conn.dst))\ndata: $(conn.data)")
 end
-GraphSystem() = GraphSystem(OrderedDict{Any, OrderedDict{Any, GraphSystemConnection}}())
+
+struct GraphSystem
+    name::Union{Nothing, Symbol}
+    data::OrderedDict{Any, OrderedDict{Any, Vector{GraphSystemConnection}}}
+    flat_graph::PartitioningGraphSystem
+end
+
+is_flat(g::GraphSystem) = isnothing(g.flat_graph)
+
+function GraphSystem(name, data)
+    flat_graph = PartitioningGraphSystem(Symbol(name, :_flat))
+    g = GraphSystem(name, data, flat_graph)
+    for n in nodes(g)
+        system_wiring_rule!(flat_graph, n)
+    end
+    for (;src, dst, data) in connections(g)
+        system_wiring_rule!(flat_graph, src, dst; data...)
+    end
+    g
+end
+
+function Base.copy(g::GraphSystem)
+    GraphSystem(g.name, copy(g.data), copy(g.flat_graph))
+end
+
+GraphSystem(; name=nothing) = GraphSystem(name, OrderedDict{Any, OrderedDict{Any, GraphSystemConnection}}())
+
 GraphSystemConnection(src, dst; kwargs...) = GraphSystemConnection(src, dst, NamedTuple(kwargs))
 
 function Base.show(io::IO, sys::GraphSystem)
@@ -23,6 +51,7 @@ end
 nodes(g::GraphSystem) = keys(g.data)
 function add_node!(g::GraphSystem, blox)
     get!(g.data, blox) do
+        system_wiring_rule!(g.flat_graph, blox)
         OrderedDict{Any, GraphSystemConnection}()
     end
 end
@@ -31,12 +60,19 @@ function connections(g::GraphSystem, src, dst)
     g.data[src][dst]
 end
 
+function connections(g::GraphSystem, src)
+    Iterators.flatmap(g.data[src]) do (_, edges)
+        edges
+    end
+end
+
 function add_connection!(g::GraphSystem, src, dst; kwargs...)
     d_src = add_node!(g, src)
     d_dst = add_node!(g, dst)
 
     v = get!(d_src, dst, GraphSystemConnection[])
     push!(v, GraphSystemConnection(src, dst, NamedTuple(kwargs)))
+    system_wiring_rule!(g.flat_graph, src, dst; kwargs...)
 end
 
 add_connection!(g::GraphSystem, src, dst, d::AbstractDict) = add_connection!(g, src, dst; d...)
@@ -57,24 +93,16 @@ function Base.merge!(g1::GraphSystem, g2::GraphSystem)
     g1
 end
 function Base.merge(g1::GraphSystem, g2::GraphSystem)
-    g3 = GraphSystem()
+    g3 = GraphSystem(;name=g1.name)
     merge!(g3, g1)
     merge!(g3, g2)
     g3
 end
 
-function delete_connection!(g::GraphSystem, conn::GraphSystemConnection)
-    v = g.data[conn.src][conn.dst]
-    i = findfirst(==(conn), v)
-    if isnothing(i)
-        @warn "Attempted to remove a connection that doesn't exist"
-    end
-    deleteat!(v, i)
-end
-
 function system_wiring_rule!(g, node)
     add_node!(g, node)
 end
+
 function system_wiring_rule!(g, src, dst; kwargs...)
     if !haskey(kwargs, :conn)
         error("conn keyword argument not specified for connection between $src and $dst")
@@ -82,224 +110,5 @@ function system_wiring_rule!(g, src, dst; kwargs...)
     add_connection!(g, src, dst; conn=kwargs[:conn], kwargs...)
 end
 
-@kwdef struct PartitionedGraphSystem{CM <: ConnectionMatrices, S, P, SP, EVT, Ns, CONM, SNM, PNM, CNM, EP}
-    graph::Union{Nothing, GraphSystem} = nothing
-    flat_graph::Union{Nothing, GraphSystem} = nothing
-    connection_matrices::CM
-    states_partitioned::S
-    params_partitioned::P
-    subsystems_partitioned::SP = map(i -> map(j -> Subsystem(states_partitioned[i][j], params_partitioned[i][j]),
-                                          eachindex(states_partitioned[i], params_partitioned[i])),
-                                 eachindex(states_partitioned, params_partitioned))
-    tstops::EVT = Float64[]
-    names_partitioned::Ns
-    connection_namemap::CONM = make_connection_namemape(names_partitioned, connection_matrices)
-    state_namemap::SNM = make_state_namemap(names_partitioned, states_partitioned)
-    param_namemap::PNM = make_param_namemap(names_partitioned, params_partitioned)
-    compu_namemap::CNM = make_compu_namemap(names_partitioned, states_partitioned, params_partitioned)
-    is_stochastic::Bool=any(v -> any(isstochastic, v), states_partitioned)
-    extra_params::EP = (;)
-end
-
-function PartitionedGraphSystem(g::GraphSystem)
-    g_flat = GraphSystem()
-    for sys ∈ nodes(g)
-        system_wiring_rule!(g_flat, sys)
-    end
-    for (;src, dst, data) ∈ connections(g)
-        system_wiring_rule!(g_flat, src, dst; data...)
-    end
-    #==================================================================================================
-    Create a list of lists of the lowest level nodes in the flattened graph, partitioned by their type
-    so different types can be handled efficiently
-
-    e.g. if we have
-    @named n1 = SysType1(x=1, y=2)
-	@named n2 = SysType1(x=1, y=3)
-	@named n3 = SysType2(a=1, b=2, c=3)
-
-    in the graph, then we'd end up with
-
-    nodes_paritioned = [SysType1[n1, n2], SysType1[n3]]
-    
-    ===================================================================================================#
-    
-    node_types = (unique ∘ imap)(typeof, nodes(g_flat))
-    nodes_partitioned = map(node_types) do T
-        if isstochastic(T)
-            system_is_stochastic = true
-        end
-        filter(collect(nodes(g_flat))) do sys
-            sys isa T
-        end
-    end
-    tstops = Float64[]
-    subsystems_partitioned = (Tuple ∘ map)(nodes_partitioned) do v
-        map(v) do node
-            sys = to_subsystem(node)
-            for t ∈ event_times(sys)
-                push!(tstops, t)
-            end
-            sys
-        end
-    end
-    states_partitioned = (Tuple ∘ map)(v -> map(get_states, v),  subsystems_partitioned)
-    params_partitioned = (Tuple ∘ map)(v -> map(get_params, v),  subsystems_partitioned)
-    names_partitioned  = (Tuple ∘ map)(v -> map(x -> convert(Symbol, get_name(x)), v), nodes_partitioned)
-
-    #==================================================================================================
-    Create a ConnectionMatrices object containing structured information about how each lowest level nodes 
-    is connected to other nodes, partitioned by the types of the nodes, and the types of the connections for
-    type stability.
-    e.g. if we have
-    
-    @named n1 = SysType1(x=1, y=2)
-	@named n2 = SysType1(x=1, y=3)
-	@named n3 = SysType2(a=1, b=2, c=3)
-    
-    add_connection!(g, n1, n2; conn=Conn1(1))
-    add_connection!(g, n2, n3; conn=Conn1(2))
-    add_connection!(g, n3, n1; conn=Conn2(3))
-    add_connection!(g, n3, n2; conn=Conn2(4))
-    
-    we'd get
-    connection_matrix_1 = Conn1[⎡. 1⎤⎡.⎤
-	                            ⎣. .⎦⎣2⎦
-	                            [. .][.]]
-	
-	connection_matrix_2 = Conn2[⎡. .⎤⎡.⎤
-	                            ⎣. .⎦⎣.⎦
-	                            [3 4][.]]
-	
-	ConnectionMatrices((connection_matrix_1, connection_matrix_2))
-
-    where the sub-matrices are sparse arrays.
-
-    This allows for type-stable calculations involving the subsystems and their connections
-    ===================================================================================================#
-    (;connection_matrices, connection_tstops, connection_namemap) = make_connection_matrices(g_flat, nodes_partitioned;
-                                                                                             subsystems_partitioned, names_partitioned)
-
-    append!(tstops, connection_tstops)
-    
-
-    PartitionedGraphSystem(
-        ;graph=g,
-        flat_graph=g_flat,
-        is_stochastic = any(isstochastic, node_types),
-        connection_matrices,
-        subsystems_partitioned,
-        states_partitioned,
-        params_partitioned,
-        tstops=unique!(tstops),
-        names_partitioned,
-        connection_namemap
-    )
-end
-
-function make_partitioned_nodes(g_flat)
-    node_types = (unique ∘ imap)(typeof, nodes(g_flat))
-    nodes_partitioned = map(node_types) do T
-        filter(collect(nodes(g_flat))) do sys
-            sys isa T
-        end
-    end
-end
-
-
-function make_connection_matrices(g_flat, nodes_partitioned=make_partitioned_nodes(g_flat);
-                                  pred=(_) -> true,
-                                  conn_key=:conn,
-                                  subsystems_partitioned=map(v -> map(to_subsystem, v), nodes_partitioned),
-                                  names_partitioned=map(v -> map(x -> convert(Symbol, get_name(x)), v), nodes_partitioned))
-    check_no_double_connections(g_flat, conn_key)
-    connection_types = (imap)(connections(g_flat)) do (; src, dst, data)
-        if haskey(data, conn_key) && pred(data[conn_key])
-            typeof(data[conn_key])
-        else
-            nothing
-        end
-    end |> unique |> x -> filter(!isnothing, x)
-    connection_tstops = Float64[]
-    connection_namemap = OrderedDict{Symbol, ConnectionIndex}()
-    connection_matrices = (ConnectionMatrices ∘ Tuple ∘ map)(enumerate(connection_types)) do (nc, CT)
-        (ConnectionMatrix ∘ Tuple ∘ map)(enumerate(nodes_partitioned)) do (k, nodeks)
-            (Tuple ∘ map)(enumerate(nodes_partitioned)) do (i, nodeis)
-                ls = Int[]
-                js = Int[]
-                conns = CT[]
-                for (j, nodeij) ∈ enumerate(nodeis)
-                    for (l, nodekl) ∈ enumerate(nodeks)
-                        if has_connection(g_flat, nodekl, nodeij)
-                            for (; data) = connections(g_flat, nodekl, nodeij)
-                                if haskey(data, conn_key)
-                                    conn = data[conn_key]
-                                    if conn isa CT && pred(conn)
-                                        push!(js, j)
-                                        push!(ls, l)
-                                        push!(conns, conn)
-                                        
-                                        for (prop, name) ∈ pairs(connection_property_namemap(conn, names_partitioned[k][l], names_partitioned[i][j]))
-                                            connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, name, prop)
-                                        end
-                                        
-                                        for t ∈ event_times(conn, subsystems_partitioned[k][l], subsystems_partitioned[i][j])
-                                            push!(connection_tstops, t)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-                rule_matrix = if isempty(conns)
-                    NotConnected{CT}() #{CT}(length(nodeks), length(nodeis))
-                else
-                    sparse(ls, js, conns, length(nodeks), length(nodeis))
-                end
-                rule_matrix
-            end
-        end
-    end
-    (; connection_matrices, connection_tstops, connection_namemap)
-end
-
-function check_no_double_connections(g, conn_key)
-    for src ∈ nodes(g)
-        for dst ∈ nodes(g)
-            if has_connection(g, src, dst)
-                ps = connections(g, src, dst)
-                conns = [data[conn_key] for (;data) ∈ connections(g, src, dst) if haskey(data, conn_key)]
-                if length(unique(typeof, conns)) < length(conns)
-                    error("Cannot have multiple connections between the same two nodes of the same type. Got $(conns) between $src and $dst.")
-                end
-            end
-        end
-    end
-end
-
-@generated function make_connection_namemape(names_partitioned::NTuple{Len, Any},
-                                             connection_matrices::ConnectionMatrices{NConn}) where {Len, NConn}
-    quote 
-        connection_namemap = OrderedDict{Symbol, ConnectionIndex}()
-        @nexprs $Len k -> begin
-            @nexprs $Len i -> begin
-                @nexprs $NConn nc -> begin
-                    M = connection_matrices[nc].data[k][i]
-                    if !(M isa NotConnected)
-                        for j ∈ eachindex(names_partitioned)
-                            for (l, conn) ∈ maybe_sparse_enumerate_col(M, j)
-                                name_kl = names_partitioned[k][l]
-                                name_ij = names_partitioned[i][j]
-                                for (prop, name) ∈ pairs(connection_property_namemap(conn, name_kl, name_ij))
-                                    connection_namemap[name] = ConnectionIndex(nc, k, i, l, j, name, prop)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        connection_namemap
-    end
-end
+# Should not give different results on consecutive re-flattenings.
+flatten_graph(g::GraphSystem; name=g.name) = g.flat_graph
