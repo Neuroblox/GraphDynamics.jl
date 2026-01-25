@@ -128,10 +128,10 @@ function particle_osc_prob(;x1, x2, m=3.0, mp1=1.0, kc_p1_p2=1, tspan = (0.0, 10
 
     add_connection!(g, particle1, particle2; conn=Coulomb(1))
     add_connection!(g, particle2, particle1; conn=Coulomb(1))
-    gsys = PartitionedGraphSystem(g)
+
     # gsys._namemap[:w_particle1_particle2_spring] = 
     prob = ODEProblem(
-        gsys,
+        g,
         [:particle1₊x => x1, :particle2₊x => x2, :particle2₊v => 0.0, :osc₊x => 0.0
          ],
         tspan,
@@ -176,58 +176,60 @@ function test_derivative(f, v; rtol=1e-3)
 end
 
 function sensitivity_test()
-    @testset "Sensitivities" begin
-        @testset "via constructor" begin
+    # @testset "Sensitivities"
+    begin
+        # @testset "via constructor"
+        begin
             test_jacobian([1.0, -1.0]) do (x1, x2)
                 sol = solve_particle_osc(;x1, x2, reltol=1e-8)
-                [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+                [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
             end
 
             test_derivative(3.0) do m
                 sol = solve_particle_osc(;x1=one(typeof(m)), x2=-1.0, m=m, reltol=1e-8)
-                sol[:particle1₊x, end]
+                sol[:particle1₊x][end]
             end
 
             test_derivative(1.0) do fac
                 sol = solve_particle_osc(;x1=1.0, x2=-1.0, kc_p1_p2=fac, reltol=1e-8)
-                [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+                [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
             end
             
             test_jacobian([1.0, -1.0, 3.0, 1.0, 2.0]) do (x1, x2, m, kc_p1_p2, mp1)
                 sol = solve_particle_osc(;x1, x2, m, kc_p1_p2, mp1, reltol=1e-8)
-                [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+                [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
             end
         end
 
-        @testset "via remake" begin
+        # @testset "via remake"
+        begin
             
             prob = particle_osc_prob(; x1=1.0, x2=-1.0)
 
             test_jacobian([1.0, -1.0]) do (x1, x2)
                 prob2 = remake(prob; u0=[:particle1₊x => x1, :particle2₊x => x2])
                 sol = solve(prob2, Tsit5(); reltol=1e-8)
-                [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+                [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
             end
 
             test_derivative(3.0) do m
                 prob2 = remake(prob; p=[:osc₊m => m])
                 sol = solve(prob2, Tsit5(); reltol=1e-8)
-                sol[:particle1₊x, end]
+                sol[:particle1₊x][end]
             end
             
             test_derivative(1.0) do k
                 prob2 = remake(prob; p=[:k_Spring_particle1_osc => k])
                 sol = solve(prob2, Tsit5(); reltol=1e-8)
-                sol[:particle1₊x, end]
+                sol[:particle1₊x][end]
             end
 
 
             test_jacobian([1.0, -1.0, 3.0, 1.0, 2.0]) do (x1, x2, m, kc_p1_p2, mp1)
                 prob2 = remake(prob; u0=[:particle1₊x => x1, :particle2₊x => x2], p=[:osc₊m => m, :particle1₊m => mp1, :fac_coulomb_particle1_particle2 => kc_p1_p2])
                 sol = solve(prob2, Tsit5(); reltol=1e-8)
-                [sol[:particle1₊x, end], sol[:particle2₊x, end], sol[:osc₊x, end]]
+                [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
             end
-            
         end
     end
 end

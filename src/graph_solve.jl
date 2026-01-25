@@ -69,6 +69,33 @@ end
     end
 end
 
+@generated function GraphDynamics._graph_ode!(dstates_partitioned::NTuple{Len, Any},
+                                              states_partitioned ::NTuple{Len, Any},
+                                              params_partitioned ::NTuple{Len, Any},
+                                              connection_matrices::ConnectionMatrices{NConn},
+                                              scheduler::PolyesterScheduler,
+                                              t,) where {Len, NConn}
+    quote
+        @nexprs $Len i -> begin
+            f = make_graph_ode_mapping_f(
+                Val(i),
+                dstates_partitioned,
+                states_partitioned,
+                params_partitioned,
+                connection_matrices,
+                SerialScheduler(),
+                t
+            )
+            pforeach(f, eachindex(states_partitioned[i]))
+        end
+    end
+end
+
+pforeach(f, itr) = @batch for j ∈ itr
+    f(j)
+end
+
+
 
 @generated function _graph_ode!(dstates_partitioned::NTuple{Len, Any}#=mutated=#,
                      states_partitioned ::NTuple{Len, Any},
@@ -116,52 +143,30 @@ function _graph_ode_mapping_f(j, ::Val{i},
                               connection_matrices::ConnectionMatrices{NConn},
                               scheduler,
                               t) where {i, Len, NConn}
-    sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-    input = if subsystem_differential_requires_inputs(sys_dst)
+    sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+    input = if subsystem_differential_requires_inputs(sys)
         calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
     else
-        initialize_input(sys_dst)
+        initialize_input(sys)
     end
-    apply_subsystem_differential!(@view(dstates_partitioned[i][j]), sys_dst, input, t)
+    apply_subsystem_differential!(@view(dstates_partitioned[i][j]), sys, input, t)
 end
-
-"""
-    combine_inputs(subsys::Subsystem,
-                   M::AbstractMatrix{<:ConnectionRule},
-                   j::Integer,
-                   states_partitioned::AbstractVector{<:SubsystemStates},
-                   params_partitioned::abstractvector{<:SubsystemParams},
-                   scheduler;
-                   init=initialize_input(subsys))
-
-Given an input graph-subsystem `subsys`, a (sub-)connection matrix `M` whose `j`-th column describes the
-connections between `subsys` and a (sub-)list of subsystems defined by `states_partitioned` and
-`params_partitioned`, compute the total input that should be passed to `subsys` by combining all the input
-signals sent from each connected subsystem.
-
-e.g. if the inputs are just numbers who are combined by adding them together, then this computes
-
-```math
-\\sum_{l} M[l, j](Subsystem(states_partitioned[i], params_partitioned[l]), subsys)
-```
-"""
-function combine_inputs end
 
 @generated function calculate_inputs(::Val{i}, j,
                                      states_partitioned::NTuple{Len, Any},
                                      params_partitioned::NTuple{Len, Any},
                                      connection_matrices::ConnectionMatrices{NConn},
-                                     #TODO: remove the =nothing fallback
-                                     t=nothing)  where {i, Len, NConn}
+                                     t)  where {i, Len, NConn} 
     quote
-        state  = @inbounds states_partitioned[i][j]
-        subsys = @inbounds Subsystem(state, params_partitioned[i][j])
+        subsys = @inbounds Subsystem(states_partitioned[i][j], params_partitioned[i][j])
         input  = initialize_input(subsys)
+        ctx = (; states_partitioned, params_partitioned, connection_matrices)
         @nexprs $Len k -> begin
+            subsystems_k = ArrayOfSubsystems(states_partitioned[k], params_partitioned[k])
             @nexprs $NConn nc -> begin
                 @inbounds begin
                     M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
-                    input′ = combine_inputs(subsys, M, j, states_partitioned[k], params_partitioned[k], t, SerialScheduler();)
+                    input′ = @inline combine_inputs(subsys, M, j, subsystems_k, t, ctx)
                     input = combine(input, input′)
                 end
             end
@@ -170,31 +175,24 @@ function combine_inputs end
     end
 end
 
-@noinline function combine_inputs(subsys, M, j, states_partitioned, params_partitioned, t, ::SerialScheduler;
-                            init=initialize_input(subsys))
+function combine_inputs(subsys, M, j, subsystems_k, t, ctx; init=initialize_input(subsys))
     acc = init
-    if M isa SparseMatrixCSC
-        @inbounds for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-            acc′ = Mlj(Subsystem(states_partitioned[l], params_partitioned[l]), subsys, t) # Now do the actual reducing step just like the above method
-            acc = combine(acc, acc′)
-        end
-    else
-        @inbounds @simd for l ∈ axes(M, 1)
-            acc′ = M[l,j](Subsystem(states_partitioned[l], params_partitioned[l]), subsys, t) # Now do the actual reducing step just like the above method
-            acc = combine(acc, acc′)
-        end
+    @inbounds for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+        t_ctx = connection_needs_ctx(Mlj) ? (t, ctx) : (t,)
+        acc′ = Mlj(subsystems_k[l], subsys, t_ctx...)
+        acc = combine(acc, acc′)
     end
     acc
 end
 
-@inline combine_inputs(subsys, M::NotConnected, j, states_partitioned, params_partitioned, t, scheduler::SerialScheduler;
-                       init=initialize_input(subsys)) = init
+combine_inputs(subsys, M::NotConnected, j, subsystems_k, t, ctx;
+               init=initialize_input(subsys)) = init
 
 """
     maybe_sparse_enumerate_col(M::AbstractMatrix, j)
 
-Equivalent to `((l, M[l, j]) for l ∈ axes(M, 1))`, except if `M` isa `SparseMatrixCSC`, this will
-only iterate over the non-zero values of `M`.
+Equivalent to `((l, M[l, j]) for l ∈ axes(M, 1))`. If `M` isa `SparseMatrixCSC`, this will
+only iterate over the non-zero values of `M`, ignoring structural zeros.
 """
 function maybe_sparse_enumerate_col(M::SparseMatrixCSC, j)
     rows = rowvals(M)
@@ -213,7 +211,6 @@ end
 function maybe_sparse_enumerate_col(::NotConnected, j)
     ()
 end
-
 
 #----------------------------------------------------------
 # Infra. for stochastic noise
@@ -249,7 +246,8 @@ end
                 for j ∈ js
                     @inbounds begin
                         sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-                        apply_subsystem_noise!(@view(dstates_partitioned[i].data[:, j]), sys, t)
+                        states_view = view(dstates_partitioned[i], j)
+                        apply_subsystem_noise!(states_view, sys, t)
                         idx += l
                     end
                 end
@@ -307,18 +305,18 @@ function _continuous_affect!(integrator,
         @inbounds begin
             if has_continuous_events(eltype(states_partitioned[i]))
                 N = length(states_partitioned[i])
+                subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
                 js = (1:N) .+ offset
                 if idx ∈ js
                     j = idx - offset
-                    sview = @view states_partitioned[i][j]
-                    pview = @view params_partitioned[i][j]
                     sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                    sys_view = @view subsystems_i[j]
                     F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                     if continuous_events_require_inputs(sys)
                         input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
-                        apply_continuous_event!(integrator, sview, pview, sys, F, input)
+                        apply_continuous_event!(integrator, sys_view, sys, F, input)
                     else
-                        apply_continuous_event!(integrator, sview, pview, sys, F)
+                        apply_continuous_event!(integrator, sys_view, sys, F)
                     end
                 end
                 offset += N
@@ -346,9 +344,10 @@ end
         trigger = false
         @nexprs $Len i -> begin
             if has_discrete_events(eltype(states_partitioned[i]))
+                subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
                 for j ∈ eachindex(states_partitioned[i])
                     F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
-                    sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                    sys = subsystems_i[j]
                     cond = discrete_event_condition(sys, t, F)
                     trigger |= cond
                     discrete_event_cache[i][j] = cond
@@ -360,14 +359,15 @@ end
             @nexprs $Len i -> begin
                 @nexprs $Len k -> begin
                     M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
-                    
                     if !(M isa NotConnected) && has_discrete_events(eltype(M),
-                                                                    get_tag(eltype(states_partitioned[i])),
-                                                                    get_tag(eltype(states_partitioned[k])))
+                                                                    get_tag(eltype(states_partitioned[k])),
+                                                                    get_tag(eltype(states_partitioned[i])))
+                        subsystems_k = ArrayOfSubsystems(states_partitioned[k], params_partitioned[k])
+                        subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
                         for j ∈ eachindex(states_partitioned[i])
-                            sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
+                            sys_dst = subsystems_i[j]
                             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                                sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                                sys_src = subsystems_k[l]
                                 discrete_event_condition(Mlj, t, sys_src, sys_dst) && return true
                             end
                         end
@@ -401,17 +401,17 @@ end
         @nexprs $Len i -> begin
             # First we apply events to the states
             if has_discrete_events(eltype(states_partitioned[i]))
-                @inbounds for j ∈ eachindex(states_partitioned[i])
+                subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
+                @inbounds for j ∈ eachindex(subsystems_i)
                     if discrete_event_cache[i][j]
                         sys = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-                        sview = @view states_partitioned[i][j]
-                        pview = @view params_partitioned[i][j]
+                        sys_view = @view subsystems_i[j]
                         F = ForeachConnectedSubsystem{i}(j, states_partitioned, params_partitioned, connection_matrices)
                         if discrete_events_require_inputs(sys)
                             input = calculate_inputs(Val(i), j, states_partitioned, params_partitioned, connection_matrices, t)
-                            apply_discrete_event!(integrator, sview, pview, sys, F, input)
+                            apply_discrete_event!(integrator, sys_view, sys, F, input)
                         else
-                            apply_discrete_event!(integrator, sview, pview, sys, F)
+                            apply_discrete_event!(integrator, sys_view, sys, F)
                         end
                     end
                 end
@@ -436,18 +436,21 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
                                       connection_matrices::ConnectionMatrices{NConn},
                                       integrator) where {i, k, nc, Len, NConn}
     function (j)
-        sys_dst = Subsystem(states_partitioned[i][j], params_partitioned[i][j])
-        sview_dst = @view states_partitioned[i][j]
-        pview_dst = @view params_partitioned[i][j]
+        subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
+        subsystems_k = ArrayOfSubsystems(states_partitioned[k], params_partitioned[k])
+        
+        sys_view_dst = @view subsystems_i[j]
+        sys_dst      = sys_view_dst[]
+        
         M = connection_matrices.matrices[nc].data[k][i]
         if !(M isa NotConnected) && has_discrete_events(eltype(M),
-                                                        get_tag(eltype(states_partitioned[i])),
-                                                        get_tag(eltype(states_partitioned[k])))
+                                                        get_tag(eltype(states_partitioned[k])),
+                                                        get_tag(eltype(states_partitioned[i])))
             for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
-                sys_src = Subsystem(states_partitioned[k][l], params_partitioned[k][l])
+                sys_view_src = @view subsystems_k[l]
+                sys_src      = sys_view_src[]
                 if discrete_event_condition(Mlj, t, sys_src, sys_dst)
-                    sview_src = @view states_partitioned[k][l]
-                    pview_src = @view params_partitioned[k][l]
+
                     if discrete_events_require_inputs(typeof(Mlj))
                         input_dst = calculate_inputs(Val(i), j,
                                                      states_partitioned,
@@ -460,15 +463,15 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
                                                      connection_matrices,
                                                      t)
                         apply_discrete_event!(integrator,
-                                              sview_src, pview_src,
-                                              sview_dst, pview_dst,
+                                              sys_view_src,
+                                              sys_view_dst,
                                               Mlj,
                                               sys_src, input_src,
                                               sys_dst, input_dst)
                     else
                         apply_discrete_event!(integrator,
-                                              sview_src, pview_src,
-                                              sview_dst, pview_dst,
+                                              sys_view_src,
+                                              sys_view_dst,
                                               Mlj,
                                               sys_src, sys_dst)
                     end
@@ -477,6 +480,8 @@ function _discrete_connection_affect!(::Val{i}, ::Val{k}, ::Val{nc}, t,
         end
     end
 end
+
+
 
 
 #-----------------------------------------------------------------------
@@ -534,18 +539,18 @@ end
         (;l, states_partitioned, params_partitioned, connection_matrices) = FCS
         state = init
         @nexprs $Len i -> begin
+            subsystems_i = ArrayOfSubsystems(states_partitioned[i], params_partitioned[i])
             @nexprs $NConn nc -> begin
                 M = connection_matrices[nc].data[k][i] # Same as cm[nc][k,i] but performs better when there's many types
                 if M isa NotConnected
                     nothing
                 else
-                    for j ∈ eachindex(states_partitioned[i])
-                        if isassigned(M, l, j)
+                    for j ∈ eachindex(subsystems_i)
+                        if isstored(M, l, j)
                             conn = M[l, j]
-                            @inbounds states_view_dst = @view states_partitioned[i][j]
-                            @inbounds params_view_dst = @view params_partitioned[i][j]
-                            sys_dst = Subsystem(states_view_dst[], params_view_dst[])
-                            res = f(conn, sys_dst, states_view_dst, params_view_dst)
+                            @inbounds sys_view_dst = @view subsystems_i[j]
+                            sys_dst = sys_view_dst[]
+                            res = f(conn, sys_dst, sys_view_dst)
                             state = op(state, res)
                         end
                     end
@@ -558,3 +563,17 @@ end
 (FCS::ForeachConnectedSubsystem)(f::F) where {F} = mapreduce(f, (_, _) -> nothing, FCS; init=nothing)
 
 
+@generated function foreach_incoming_conn(f, cm::ConnectionMatrices{NConn, Tup}, ::Val{i}, j) where {NConn, NPar, i, Tup <: NTuple{NConn, ConnectionMatrix{NPar}}}
+    quote
+        @nexprs $NConn nc -> begin
+            @nexprs $NPar k -> begin
+                M = cm[nc].data[k][i]
+                if !(M isa NotConnected)
+                    for (l, Mlj) ∈ maybe_sparse_enumerate_col(M, j)
+                        f(nc, k, l, Mlj)
+                    end
+                end
+            end
+        end
+    end
+end
