@@ -1,4 +1,4 @@
-## v0.8.0
+## GraphDynamics v0.7.0
 
 ### New features
 
@@ -7,15 +7,9 @@
 + If a connection type overrides `GraphDynamics.connection_needs_ctx` to give true, then connections of that type will be given a fourth `ctx` argument which gives it access to the full list of `states_partitioned`, `params_partitioned`, and `connection_matrices` when accumulating inputs.
 + GraphDynamics integrates with Latexify.jl to latexify the equations of a GraphSystem.
 
-### Breaking Changes
-
-+ `PartitionedGraphSystem` has been removed; `GraphSystem`s holds a field `g.flat_graph` field with a `PartitioningGraphSystem` object which actively flattens and partitions the graph during solving
-+ `apply_discrete_event!` and `apply_continuous_event!` now take `SubsytemView` objects instead of separate view objects for the states and parameters. 
-
-## GraphDynamics v0.7.0
-
 ### Breaking changes
 
++ `PartitionedGraphSystem` has been removed; `GraphSystem`s holds a field `g.flat_graph` field with a `PartitioningGraphSystem` object which actively flattens and partitions the graph during solving
 + `apply_discrete_event!`, `apply_continuous_event!`, and `ForeachConnectedSubsystem` have had their `vstates` and `vparams` arguments combined into a `sys_view` argument, which gives a view into the affected system for (and the connection form gets a `sys_view_src` and `sys_view_dst`). This `sys_view` can have it's fields be updated in place like so:
 ```julia
 function GraphDynamics.apply_discrete_event!(integrator, sys_view, sys::Subsystem{MyType}, _)
