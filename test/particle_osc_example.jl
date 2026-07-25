@@ -233,3 +233,13 @@ function sensitivity_test()
         end
     end
 end
+
+function test_enzyme_jacobian()
+    v = [1.0, -1.0]
+    dv = [0.0, 0.0]
+    function foo((x1, x2))
+        sol = solve_particle_osc(;x1, x2, reltol=1e-8)
+        [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
+    end
+    jacobian(Forward, foo, v) ≈ FiniteDiff.finite_difference_jacobian(foo, v) rtol=1e-3
+end

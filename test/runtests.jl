@@ -4,6 +4,7 @@ using SafeTestsets
 begin
     include("particle_osc_example.jl")
     solution_solve_test()
+    test_enzyme_jacobian()
     sensitivity_test()
 end
 
