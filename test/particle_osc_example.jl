@@ -241,5 +241,5 @@ function test_enzyme_jacobian()
         sol = solve_particle_osc(;x1, x2, reltol=1e-8)
         [sol[:particle1₊x][end], sol[:particle2₊x][end], sol[:osc₊x][end]]
     end
-    jacobian(Forward, foo, v) ≈ FiniteDiff.finite_difference_jacobian(foo, v) rtol=1e-3
+    @test jacobian(Forward, foo, v) ≈ FiniteDiff.finite_difference_jacobian(foo, v) rtol=1e-3
 end
