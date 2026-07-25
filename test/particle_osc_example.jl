@@ -1,4 +1,4 @@
-using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff, FiniteDiff
+using GraphDynamics, OrdinaryDiffEqTsit5, Test, ForwardDiff, FiniteDiff, Enzyme
 
 using GraphDynamics
 using Base: @kwdef
